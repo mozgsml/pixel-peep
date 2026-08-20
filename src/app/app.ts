@@ -1,6 +1,6 @@
 import { DEFAULT_FORMAT, REFERENCE_FORMAT, findCodec, listCodecs } from '../codecs/registry.ts';
 import { type ParamValue, defaultParams, normaliseParams } from '../codecs/types.ts';
-import type { AlignMode, Axis, PanelBox, SyncMode } from '../core/geometry.ts';
+import { type AlignMode, type Axis, type PanelBox, type SyncMode, drawRects } from '../core/geometry.ts';
 import { type ImageSource, SUPPORTED_INPUT_LABELS } from '../core/image-source.ts';
 import { Viewport } from '../core/viewport.ts';
 import { UnsupportedFileError, loadImageFile } from '../io/decode-file.ts';
@@ -606,7 +606,10 @@ export class App {
       const pyramid = this.#textures.get(key, image);
       const logical = state.flip && source ? { width: source.width, height: source.height } : box.image;
       const filter = diffMode && state.diffGain > 1 ? `brightness(${state.diffGain})` : 'none';
-      view.renderer.draw(pyramid, { image: logical, panel: box.panel }, geometry[index] ?? geometry[0]!, filter);
+      const geom = geometry[index] ?? geometry[0]!;
+      const drawBox = { image: logical, panel: box.panel };
+      view.renderer.draw(pyramid, drawBox, geom, filter);
+      view.setOutOfFrame(!!pyramid && drawRects(drawBox, geom) === null);
     });
 
     this.#textures.retain(keys);

@@ -42,6 +42,11 @@ export class PanelView {
   #detailsRow = el('dl', { class: 'panel-details' });
   #detailsButton = el('button', { type: 'button', class: 'details-toggle', 'aria-expanded': 'false' }, '⋯');
   #canvas = el('canvas', { class: 'panel-canvas' });
+  #outOfFrame = el(
+    'div',
+    { class: 'panel-outside' },
+    'Область продолжения вне кадра — увеличьте масштаб или переключитесь на «Зеркало»',
+  );
 
   #lastSchemaId = '';
 
@@ -61,6 +66,7 @@ export class PanelView {
       'div',
       { class: 'panel-view', tabindex: '0', role: 'img', 'aria-label': 'Панель сравнения' },
       this.#canvas,
+      this.#outOfFrame,
       this.#overlay,
     );
     this.paramsHost = el('div', { class: 'panel-params' }, this.params.root);
@@ -225,6 +231,15 @@ export class PanelView {
     for (const [term, value] of rows) {
       this.#detailsRow.appendChild(el('div', { class: 'detail' }, el('dt', {}, term), el('dd', {}, value)));
     }
+  }
+
+  /**
+   * In "continuation" mode a trailing panel can end up entirely past the edge
+   * of the image. That is what the mode means, but an unexplained grey
+   * rectangle reads as a bug, so it says what happened.
+   */
+  setOutOfFrame(outside: boolean): void {
+    toggleClass(this.#outOfFrame, 'is-visible', outside);
   }
 
   dispose(): void {

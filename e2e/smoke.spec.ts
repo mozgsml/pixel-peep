@@ -48,6 +48,26 @@ test('a fixture image loads and both panels appear', async ({ page }) => {
   await expect(page.locator('[data-testid="panel"]').first().locator('[data-metric="size"]')).not.toHaveText('—');
 });
 
+test('the shell gives the stage the space that is left over', async ({ page }) => {
+  // The panels are the whole product. A shell that hands the spare height to
+  // the status bar instead still passes every metric assertion, so the shape of
+  // the layout is checked explicitly.
+  await loadFixture(page);
+  const box = await page.evaluate(() => {
+    const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+    return {
+      viewport: window.innerHeight,
+      stage: rect('.stage').height,
+      panel: rect('.panel-view').height,
+      status: rect('.statusbar').height,
+    };
+  });
+
+  expect(box.stage).toBeGreaterThan(box.viewport * 0.6);
+  expect(box.panel).toBeGreaterThan(box.viewport * 0.4);
+  expect(box.status).toBeLessThan(60);
+});
+
 test('png gives PSNR = infinity, proving the pipeline is intact', async ({ page }) => {
   await loadFixture(page);
   await selectFormat(page, 1, 'png');

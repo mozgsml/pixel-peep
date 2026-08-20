@@ -42,6 +42,8 @@ export function attachViewportInput(element: HTMLElement, host: ViewportInputHos
 
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0 && event.pointerType === 'mouse') return;
+    // Otherwise the browser starts a text selection or an image drag instead.
+    event.preventDefault();
     element.setPointerCapture(event.pointerId);
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 

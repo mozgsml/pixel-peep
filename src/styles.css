@@ -48,6 +48,7 @@ body {
 
 body {
   background: var(--chrome);
+  user-select: none;
   color: var(--text);
   font-family: var(--font);
   font-size: 13px;
@@ -57,6 +58,12 @@ body {
 }
 
 /* Metrics must not jitter while they update. */
+.metric-value,
+.panel-details,
+.notice {
+  user-select: text;
+}
+
 .metric-value,
 .param-value,
 .zoom-value,
@@ -109,16 +116,27 @@ select {
 /* ------------------------------------------------------------------ shell */
 
 .app {
-  display: grid;
-  /* topbar / notices / stage / sheet / statusbar. Empty rows collapse. */
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  /* Flex, not grid: the notice bar and the mobile sheet come and go, and grid
+     auto-placement would hand the 1fr track to whichever child happens to land
+     in it. */
+  display: flex;
+  flex-direction: column;
   height: 100dvh;
+  overflow: hidden;
 }
 
 .stage-wrap {
   position: relative;
+  flex: 1 1 auto;
   min-height: 0;
   background: var(--surround);
+}
+
+.topbar,
+.notices,
+.statusbar,
+.sheet {
+  flex: 0 0 auto;
 }
 
 /* --------------------------------------------------------------- top bar */
@@ -515,6 +533,24 @@ input[type="range"]:disabled::-moz-range-thumb {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.panel-outside {
+  position: absolute;
+  inset: auto 16px 16px;
+  display: none;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: rgba(24, 24, 24, 0.9);
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.panel-outside.is-visible {
+  display: block;
 }
 
 .panel-overlay {
