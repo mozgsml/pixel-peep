@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+
+# A new push makes the previous run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and round-trip tests
+        run: npm test
+
+      - name: Build
+        run: npx vite build
+
+      - name: Verify the isolation headers are in the publish directory
+        run: |
+          # The most likely production failure is _headers not shipping: the site
+          # still works, just several times slower, and nobody notices.
+          test -f dist/_headers
+          grep -q 'Cross-Origin-Opener-Policy: same-origin' dist/_headers
+          grep -q 'Cross-Origin-Embedder-Policy: require-corp' dist/_headers

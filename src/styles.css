@@ -1,0 +1,1087 @@
+/*
+ * A measuring instrument, not a shop window.
+ *
+ * The palette is strictly neutral and there is no colour of any kind within
+ * reach of the image: a coloured surround shifts the perception of the pixels
+ * you came here to judge. The single accent exists for focus rings and active
+ * controls in the top bar, nowhere else.
+ */
+
+:root {
+  --chrome: #191919;
+  --chrome-raised: #212121;
+  --chrome-sunken: #141414;
+  /* Neutral 18% grey: the standard viewing surround, and the panel background. */
+  --surround: #2e2e2e;
+  --line: #333333;
+  --line-strong: #444444;
+  --text: #ececec;
+  --text-dim: #a6a6a6;
+  --text-faint: #8a8a8a;
+  --accent: #6f9bf0;
+  --warn: #d9a441;
+  --error: #e0685f;
+
+  --radius: 9px;
+  --radius-sm: 6px;
+  --tap: 34px;
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--chrome);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Metrics must not jitter while they update. */
+.metric-value,
+.param-value,
+.zoom-value,
+.panel-details,
+.build-info {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* ------------------------------------------------------------------ boot */
+
+#boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--chrome);
+  z-index: 100;
+}
+
+.boot-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #e8e8e8 0 50%, #6a6a6a 50% 100%);
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------------------------ shell */
+
+.app {
+  display: grid;
+  /* topbar / notices / stage / sheet / statusbar. Empty rows collapse. */
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  height: 100dvh;
+}
+
+.stage-wrap {
+  position: relative;
+  min-height: 0;
+  background: var(--surround);
+}
+
+/* --------------------------------------------------------------- top bar */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 12px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--line);
+  min-height: 50px;
+  flex-wrap: wrap;
+}
+
+.topbar-left,
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.topbar-centre {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 260px;
+  justify-content: center;
+}
+
+.topbar-right {
+  margin-left: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 4px;
+  user-select: none;
+}
+
+.brand-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #ededed 0 50%, #6a6a6a 50% 100%);
+}
+
+.brand-name {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.toolbar-group.is-hidden {
+  display: none;
+}
+
+.toolbar-label {
+  color: var(--text-faint);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- controls */
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--chrome-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.segmented.is-disabled {
+  opacity: 0.45;
+}
+
+.segment {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 0 10px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 90ms linear, color 90ms linear;
+}
+
+.segment:hover:not(:disabled) {
+  color: var(--text);
+  background: #262626;
+}
+
+.segment[aria-checked="true"] {
+  background: #3a3a3a;
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.segment:disabled {
+  cursor: default;
+}
+
+.button {
+  appearance: none;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--chrome-raised);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 90ms linear, border-color 90ms linear;
+}
+
+.button:hover {
+  background: #2a2a2a;
+  border-color: #555;
+}
+
+.button-primary {
+  background: #ededed;
+  border-color: #ededed;
+  color: #171717;
+  font-weight: 550;
+}
+
+.button-primary:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.button-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+  height: 26px;
+  padding: 0 8px;
+}
+
+.button-quiet:hover {
+  background: #262626;
+  border-color: transparent;
+  color: var(--text);
+}
+
+.icon-button {
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--chrome-raised);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.icon-button:hover {
+  color: var(--text);
+  background: #2a2a2a;
+}
+
+.zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  background: var(--chrome-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.zoom-value {
+  min-width: 52px;
+  text-align: center;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.gain-control {
+  display: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolbar-group.show-gain .gain-control {
+  display: inline-flex;
+}
+
+input[type="range"].gain-range {
+  width: 96px;
+}
+
+.gain-value {
+  color: var(--text-dim);
+  font-size: 12px;
+  min-width: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-presets {
+  display: flex;
+  gap: 2px;
+}
+
+input[type="range"] {
+  appearance: none;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"].zoom-range {
+  width: 168px;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: #3d3d3d;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: #3d3d3d;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #e6e6e6;
+  border: 0;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #e6e6e6;
+  border: 0;
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background: #5a5a5a;
+}
+
+input[type="range"]:disabled::-moz-range-thumb {
+  background: #5a5a5a;
+}
+
+/* ----------------------------------------------------------------- stage */
+
+.stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  /* Explicit 1fr tracks: without them a tall control dock would push the panel
+     past the bottom of the stage instead of squeezing the canvas. */
+  grid-auto-rows: minmax(0, 1fr);
+  grid-auto-columns: minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--surround);
+}
+
+.splitter {
+  background: var(--chrome);
+  cursor: col-resize;
+  position: relative;
+  touch-action: none;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+.splitter.is-vertical {
+  cursor: row-resize;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.splitter::after {
+  content: "";
+  position: absolute;
+  inset: 50% auto auto 50%;
+  translate: -50% -50%;
+  width: 1px;
+  height: 26px;
+  background: var(--line-strong);
+  border-radius: 1px;
+}
+
+.splitter.is-vertical::after {
+  width: 26px;
+  height: 1px;
+}
+
+.splitter:hover::after {
+  background: #6a6a6a;
+}
+
+/* ----------------------------------------------------------------- panel */
+
+.panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surround);
+  position: relative;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--line);
+  min-height: 38px;
+}
+
+.format-select {
+  appearance: none;
+  height: 26px;
+  padding: 0 26px 0 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--chrome-raised)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a6a6a6' stroke-width='1.4'/%3E%3C/svg%3E")
+    no-repeat right 8px center;
+  cursor: pointer;
+  font-weight: 550;
+}
+
+.panel-note {
+  color: var(--text-faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-badge {
+  margin-left: auto;
+  display: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.panel-badge.is-visible {
+  display: inline-block;
+}
+
+.panel-view {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background: var(--surround);
+}
+
+.panel-view.is-dragging {
+  cursor: grabbing;
+}
+
+.panel-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.panel-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  padding: 20px;
+  pointer-events: none;
+}
+
+.panel-overlay.is-visible {
+  display: grid;
+}
+
+.overlay-card {
+  pointer-events: auto;
+  max-width: 320px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  background: rgba(24, 24, 24, 0.92);
+  color: var(--text);
+  text-align: center;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+}
+
+.overlay-card p {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.overlay-hint {
+  font-size: 12px;
+  color: var(--text-faint) !important;
+}
+
+.overlay-empty {
+  border-style: dashed;
+  color: var(--text-dim);
+  background: rgba(24, 24, 24, 0.65);
+}
+
+.overlay-busy {
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #555;
+  border-top-color: #ddd;
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+.panel.is-drop-target .panel-view {
+  box-shadow: inset 0 0 0 2px var(--line-strong);
+}
+
+/* ------------------------------------------------------------- metrics */
+
+.panel-metrics {
+  background: var(--chrome);
+  border-top: 1px solid var(--line);
+}
+
+.panel-metrics.is-hidden {
+  visibility: hidden;
+}
+
+.panel-metrics-row {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 7px 12px;
+  overflow-x: auto;
+}
+
+.metric {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.metric-label {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.metric-value {
+  font-size: 13.5px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.metric.has-tooltip .metric-label {
+  border-bottom: 1px dotted var(--line-strong);
+  cursor: help;
+  justify-self: start;
+}
+
+.details-toggle {
+  margin-left: auto;
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-dim);
+  width: 26px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.details-toggle:hover {
+  color: var(--text);
+  background: #242424;
+}
+
+.panel-details {
+  margin: 0;
+  padding: 8px 12px 9px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  border-top: 1px dashed var(--line);
+  overflow-x: auto;
+}
+
+.detail {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.detail dt {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.detail dd {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+/* -------------------------------------------------------------- params */
+
+.panel-params {
+  background: var(--chrome);
+  border-top: 1px solid var(--line);
+}
+
+.params {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 20px;
+  padding: 9px 12px 11px;
+  /* Panels must stay the same height, or the two images stop lining up.
+     The tallest control dock on screen sets the height for all of them. */
+  min-height: var(--params-height, auto);
+  align-content: flex-start;
+}
+
+.panel-metrics {
+  min-height: var(--metrics-height, auto);
+}
+
+.params-empty {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.param {
+  display: grid;
+  gap: 4px;
+  min-width: 130px;
+}
+
+.param.is-disabled {
+  opacity: 0.4;
+}
+
+.param-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.param-label {
+  color: var(--text-dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.param-value {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.param-slider {
+  width: 100%;
+  min-width: 130px;
+}
+
+.param-select {
+  appearance: none;
+  height: 26px;
+  padding: 0 24px 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--chrome-raised)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23a6a6a6' stroke-width='1.4'/%3E%3C/svg%3E")
+    no-repeat right 7px center;
+  cursor: pointer;
+}
+
+.param-kind-toggle .param-head {
+  justify-content: flex-start;
+  gap: 9px;
+  height: 26px;
+}
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  width: 30px;
+  height: 17px;
+  flex: none;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #3a3a3a;
+  border: 1px solid var(--line-strong);
+  transition: background-color 110ms linear;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #b4b4b4;
+  transition: translate 110ms ease, background-color 110ms linear;
+}
+
+.switch input:checked + .switch-track {
+  background: #d8d8d8;
+  border-color: #d8d8d8;
+}
+
+.switch input:checked + .switch-track::after {
+  translate: 13px 0;
+  background: #1c1c1c;
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Chrome recedes while you are looking at pixels. */
+body.is-interacting .panel-params,
+body.is-interacting .panel-metrics {
+  opacity: 0.45;
+}
+
+body.is-interacting .panel-params,
+body.is-interacting .panel-metrics {
+  transition: opacity 120ms linear;
+}
+
+/* --------------------------------------------------------- empty state */
+
+.empty-state {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  padding: 24px;
+  background: var(--surround);
+  z-index: 5;
+}
+
+.empty-state.is-visible {
+  display: grid;
+}
+
+.empty-card {
+  max-width: 460px;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--chrome);
+}
+
+.empty-card h1 {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.empty-card p {
+  margin: 0;
+  color: var(--text-dim);
+  max-width: 40ch;
+}
+
+.empty-formats {
+  font-size: 12px;
+  color: var(--text-faint) !important;
+}
+
+.empty-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--line);
+  margin: 4px 0;
+}
+
+.empty-label {
+  font-size: 12px;
+  color: var(--text-faint) !important;
+}
+
+.empty-demos {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Decoding a 24 Mpx HEIC takes a moment; saying so beats an empty rectangle. */
+.loading-veil {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  gap: 10px;
+  grid-auto-flow: column;
+  background: var(--surround);
+  color: var(--text-dim);
+  z-index: 6;
+}
+
+.loading-veil.is-visible {
+  display: grid;
+}
+
+body.is-dragover .stage-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 2px dashed var(--line-strong);
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* -------------------------------------------------------------- notices */
+
+/* Docked, not floating: a toast over the control dock hides the very thing it
+   is talking about. */
+.notices {
+  display: grid;
+  gap: 1px;
+  max-height: 30vh;
+  overflow-y: auto;
+  background: var(--line);
+}
+
+.notices:empty {
+  display: none;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--chrome-raised);
+  color: var(--text-dim);
+  font-size: 12.5px;
+}
+
+.notice-warn {
+  border-left: 2px solid var(--warn);
+}
+
+.notice-error {
+  border-left: 2px solid var(--error);
+}
+
+.notice-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.notice-close:hover {
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------ statusbar */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 12px;
+  background: var(--chrome);
+  border-top: 1px solid var(--line);
+  color: var(--text-faint);
+  font-size: 11.5px;
+  min-height: 28px;
+}
+
+.build-info {
+  color: #808080;
+}
+
+/* ------------------------------------------------------------ the sheet */
+
+.sheet {
+  display: none;
+}
+
+body.is-compact .sheet {
+  display: block;
+  background: var(--chrome);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+body.is-compact .sheet-handle {
+  width: 34px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  margin: 6px auto 2px;
+}
+
+body.is-compact .sheet-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 10px 0;
+}
+
+.sheet-tab {
+  appearance: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.sheet-tab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: #d8d8d8;
+}
+
+body.is-compact .panel > .panel-params {
+  display: none;
+}
+
+body.is-compact .topbar {
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+body.is-compact .topbar-centre {
+  order: 3;
+  flex-basis: 100%;
+}
+
+body.is-compact .topbar-right {
+  gap: 8px;
+}
+
+body.is-compact .toolbar-label {
+  display: none;
+}
+
+body.is-compact .brand-name,
+body.is-compact .status-hint {
+  display: none;
+}
+
+body.is-compact input[type="range"].zoom-range {
+  flex: 1;
+  width: auto;
+}
+
+body.is-compact .panel-metrics-row {
+  gap: 14px;
+  padding: 6px 10px;
+}
+
+body.is-compact .segment,
+body.is-compact .button,
+body.is-compact .icon-button {
+  min-height: 30px;
+}
+
+/* --------------------------------------------------------- preferences */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --text-dim: #cfcfcf;
+    --text-faint: #b0b0b0;
+    --line: #4a4a4a;
+    --line-strong: #666666;
+  }
+}

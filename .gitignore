@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.wrangler/
+.DS_Store
+*.local
+.vite/
+test-results/
+playwright-report/

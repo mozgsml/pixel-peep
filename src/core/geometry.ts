@@ -1,0 +1,425 @@
+/**
+ * Pure zoom/pan mathematics. No DOM, no state, no side effects.
+ *
+ * Vocabulary
+ *  - image space: pixels of the decoded image, `W x H`
+ *  - panel space: CSS pixels of the viewport that shows it, `PW x PH`
+ *  - normalised space: `(u, v)` in [0,1]^2, the image point sitting at the
+ *    centre of the panel. Storing percentages instead of pixels is what makes
+ *    synchronising differently sized images free.
+ */
+
+export interface Size {
+  readonly width: number;
+  readonly height: number;
+}
+
+/** How `z = 0` frames an image inside its panel. */
+export type AlignMode = 'contain' | 'width' | 'height';
+
+/** How panels other than the leader derive their centre. */
+export type SyncMode = 'mirror' | 'continuous';
+
+/** Which way the panels are laid out; drives `continuous` panning. */
+export type Axis = 'x' | 'y';
+
+export interface Point {
+  readonly u: number;
+  readonly v: number;
+}
+
+export interface ViewState {
+  /** Global zoom parameter in [0, 1] (values outside are allowed and useful). */
+  readonly z: number;
+  /** Centre of the *leader* panel in normalised image coordinates. */
+  readonly u: number;
+  readonly v: number;
+}
+
+export interface PanelBox {
+  /** Image size in pixels. */
+  readonly image: Size;
+  /** Panel size in CSS pixels. */
+  readonly panel: Size;
+}
+
+export interface PanelGeometry {
+  /** Scale at `z = 0`. */
+  readonly fit: number;
+  /** Image pixels per CSS pixel at the current `z`. */
+  readonly scale: number;
+  /** Visible fraction of the image along each axis. */
+  readonly visW: number;
+  readonly visH: number;
+  /** Centre of this panel in normalised image coordinates. */
+  readonly u: number;
+  readonly v: number;
+}
+
+const EPS = 1e-9;
+
+/** Guards against zero/NaN sizes so the formulas never produce NaN. */
+function safe(n: number): number {
+  return Number.isFinite(n) && n > EPS ? n : EPS;
+}
+
+export function clamp(value: number, min: number, max: number): number {
+  if (max < min) return (min + max) / 2;
+  return value < min ? min : value > max ? max : value;
+}
+
+/**
+ * Scale at which the whole image is visible, per alignment mode.
+ * `fit > 1` (image smaller than the panel) is legal and needs no special case:
+ * the zoom curve simply runs the other way.
+ */
+export function fitScale(box: PanelBox, align: AlignMode = 'contain'): number {
+  const sw = safe(box.panel.width) / safe(box.image.width);
+  const sh = safe(box.panel.height) / safe(box.image.height);
+  switch (align) {
+    case 'width':
+      return sw;
+    case 'height':
+      return sh;
+    case 'contain':
+    default:
+      return Math.min(sw, sh);
+  }
+}
+
+/**
+ * Geometric (not linear) interpolation between `fit` and `1:1`.
+ *
+ *   scale(0) = fit,  scale(1) = 1
+ *
+ * Linear interpolation makes the wheel feel lumpy: equal wheel deltas must
+ * produce equal *ratios* of magnification, not equal differences.
+ */
+export function scaleForZoom(fit: number, z: number): number {
+  return Math.pow(safe(fit), 1 - z);
+}
+
+/** Inverse of {@link scaleForZoom}: which `z` yields this scale. */
+export function zoomForScale(fit: number, scale: number): number {
+  const lf = Math.log(safe(fit));
+  if (Math.abs(lf) < EPS) return 0;
+  return 1 - Math.log(safe(scale)) / lf;
+}
+
+/** Fraction of the image visible along each axis at a given scale. */
+export function visibleSpan(box: PanelBox, scale: number): { visW: number; visH: number } {
+  return {
+    visW: safe(box.panel.width) / (safe(box.image.width) * safe(scale)),
+    visH: safe(box.panel.height) / (safe(box.image.height) * safe(scale)),
+  };
+}
+
+/**
+ * Keep the visible window inside the image.
+ * When the image already fits along an axis (`vis >= 1`) it is centred.
+ */
+export function clampCentre(centre: number, vis: number): number {
+  if (vis >= 1) return 0.5;
+  return clamp(centre, vis / 2, 1 - vis / 2);
+}
+
+export function clampPoint(p: Point, visW: number, visH: number): Point {
+  return { u: clampCentre(p.u, visW), v: clampCentre(p.v, visH) };
+}
+
+/**
+ * Normalised image point under a cursor position expressed in panel CSS pixels.
+ */
+export function pointAtCursor(
+  cursor: { x: number; y: number },
+  box: PanelBox,
+  geom: Pick<PanelGeometry, 'u' | 'v' | 'visW' | 'visH'>,
+): Point {
+  const fx = cursor.x / safe(box.panel.width) - 0.5;
+  const fy = cursor.y / safe(box.panel.height) - 0.5;
+  return { u: geom.u + fx * geom.visW, v: geom.v + fy * geom.visH };
+}
+
+/**
+ * Centre that puts `target` back under `cursor`. The inverse of
+ * {@link pointAtCursor}, and the whole trick behind anchored zooming.
+ */
+export function centreForAnchor(
+  target: Point,
+  cursor: { x: number; y: number },
+  box: PanelBox,
+  visW: number,
+  visH: number,
+): Point {
+  const fx = cursor.x / safe(box.panel.width) - 0.5;
+  const fy = cursor.y / safe(box.panel.height) - 0.5;
+  return { u: target.u - fx * visW, v: target.v - fy * visH };
+}
+
+/** Full geometry of a single panel for a given leader centre. */
+export function panelGeometry(
+  box: PanelBox,
+  z: number,
+  centre: Point,
+  align: AlignMode = 'contain',
+): PanelGeometry {
+  const fit = fitScale(box, align);
+  const scale = scaleForZoom(fit, z);
+  const { visW, visH } = visibleSpan(box, scale);
+  return { fit, scale, visW, visH, u: centre.u, v: centre.v };
+}
+
+export interface LayoutOptions {
+  readonly sync: SyncMode;
+  readonly align: AlignMode;
+  readonly axis: Axis;
+}
+
+/**
+ * Geometry for every panel at once.
+ *
+ * `mirror`     — every panel shares the leader's centre.
+ * `continuous` — panel `i+1` starts where panel `i` ended, along the layout
+ *                axis: `u_{i+1} = u_i + visW_i/2 + visW_{i+1}/2`.
+ *
+ * Clamping is applied to the leader only; trailing panels are allowed to run
+ * off the edge (they then simply show the edge), which is what "continuation"
+ * means.
+ */
+export function layoutGeometry(
+  boxes: readonly PanelBox[],
+  view: ViewState,
+  opts: LayoutOptions,
+): PanelGeometry[] {
+  if (boxes.length === 0) return [];
+
+  const leaderBox = boxes[0]!;
+  const leaderFit = fitScale(leaderBox, opts.align);
+  const leaderScale = scaleForZoom(leaderFit, view.z);
+  const leaderVis = visibleSpan(leaderBox, leaderScale);
+  const leaderCentre = clampPoint({ u: view.u, v: view.v }, leaderVis.visW, leaderVis.visH);
+
+  const out: PanelGeometry[] = [];
+  let prev: PanelGeometry | null = null;
+
+  for (const box of boxes) {
+    const fit = fitScale(box, opts.align);
+    const scale = scaleForZoom(fit, view.z);
+    const { visW, visH } = visibleSpan(box, scale);
+
+    let centre: Point;
+    if (prev === null) {
+      centre = leaderCentre;
+    } else if (opts.sync === 'continuous') {
+      centre =
+        opts.axis === 'x'
+          ? { u: prev.u + prev.visW / 2 + visW / 2, v: prev.v }
+          : { u: prev.u, v: prev.v + prev.visH / 2 + visH / 2 };
+    } else {
+      centre = leaderCentre;
+    }
+
+    const geom: PanelGeometry = { fit, scale, visW, visH, u: centre.u, v: centre.v };
+    out.push(geom);
+    prev = geom;
+  }
+
+  return out;
+}
+
+/**
+ * Turn a desired centre for panel `index` back into a leader centre, so that
+ * interaction on any panel drives the whole set. Inverse of the accumulation
+ * done by {@link layoutGeometry}.
+ */
+export function leaderCentreFor(
+  boxes: readonly PanelBox[],
+  view: ViewState,
+  opts: LayoutOptions,
+  index: number,
+  desired: Point,
+): Point {
+  if (index <= 0 || opts.sync !== 'continuous') return desired;
+
+  let offsetU = 0;
+  let offsetV = 0;
+  let prevVis: { visW: number; visH: number } | null = null;
+
+  for (let i = 0; i <= index; i++) {
+    const box = boxes[i];
+    if (!box) break;
+    const scale = scaleForZoom(fitScale(box, opts.align), view.z);
+    const vis = visibleSpan(box, scale);
+    if (prevVis) {
+      if (opts.axis === 'x') offsetU += prevVis.visW / 2 + vis.visW / 2;
+      else offsetV += prevVis.visH / 2 + vis.visH / 2;
+    }
+    prevVis = vis;
+  }
+
+  return { u: desired.u - offsetU, v: desired.v - offsetV };
+}
+
+export interface ZoomRequest {
+  readonly boxes: readonly PanelBox[];
+  readonly view: ViewState;
+  readonly opts: LayoutOptions;
+  /** Panel the pointer is over; also the panel the anchor belongs to. */
+  readonly index: number;
+  /** Cursor position in that panel's CSS pixels. `null` anchors at its centre. */
+  readonly cursor: { x: number; y: number } | null;
+  readonly nextZ: number;
+}
+
+/**
+ * Zoom while keeping the image point under the cursor pinned.
+ *
+ * 1. before changing z, resolve the normalised point under the cursor
+ * 2. apply the new z, recompute scale and visible span
+ * 3. choose the centre that puts that point back under the cursor
+ * 4. translate back to a leader centre (step 4 of the spec is then handled by
+ *    `layoutGeometry`, which re-derives the other panels)
+ * 5. clamp
+ */
+export function zoomAtCursor(req: ZoomRequest): ViewState {
+  const { boxes, view, opts, index, cursor, nextZ } = req;
+  const box = boxes[index] ?? boxes[0];
+  if (!box) return { ...view, z: nextZ };
+
+  const before = layoutGeometry(boxes, view, opts)[index];
+  if (!before) return { ...view, z: nextZ };
+
+  const anchorCursor = cursor ?? { x: box.panel.width / 2, y: box.panel.height / 2 };
+  const target = pointAtCursor(anchorCursor, box, before);
+
+  const nextView: ViewState = { ...view, z: nextZ };
+  const fit = fitScale(box, opts.align);
+  const scale = scaleForZoom(fit, nextZ);
+  const { visW, visH } = visibleSpan(box, scale);
+
+  const desired = centreForAnchor(target, anchorCursor, box, visW, visH);
+  const leader = leaderCentreFor(boxes, nextView, opts, index, desired);
+
+  const leaderBox = boxes[0]!;
+  const leaderScale = scaleForZoom(fitScale(leaderBox, opts.align), nextZ);
+  const leaderVis = visibleSpan(leaderBox, leaderScale);
+  const clamped = clampPoint(leader, leaderVis.visW, leaderVis.visH);
+
+  return { z: nextZ, u: clamped.u, v: clamped.v };
+}
+
+export interface PanRequest {
+  readonly boxes: readonly PanelBox[];
+  readonly view: ViewState;
+  readonly opts: LayoutOptions;
+  readonly index: number;
+  /** Pointer movement in panel CSS pixels. */
+  readonly dx: number;
+  readonly dy: number;
+}
+
+/** Drag panning: move the image with the pointer, one panel drives the rest. */
+export function panBy(req: PanRequest): ViewState {
+  const { boxes, view, opts, index, dx, dy } = req;
+  const box = boxes[index] ?? boxes[0];
+  if (!box) return view;
+
+  const geom = layoutGeometry(boxes, view, opts)[index];
+  if (!geom) return view;
+
+  const desired: Point = {
+    u: geom.u - (dx / safe(box.panel.width)) * geom.visW,
+    v: geom.v - (dy / safe(box.panel.height)) * geom.visH,
+  };
+
+  const leader = leaderCentreFor(boxes, view, opts, index, desired);
+  const leaderBox = boxes[0]!;
+  const leaderScale = scaleForZoom(fitScale(leaderBox, opts.align), view.z);
+  const leaderVis = visibleSpan(leaderBox, leaderScale);
+  const clamped = clampPoint(leader, leaderVis.visW, leaderVis.visH);
+
+  return { z: view.z, u: clamped.u, v: clamped.v };
+}
+
+/**
+ * Source/destination rectangles for `drawImage`.
+ *
+ * The source rectangle is clipped to the image, and the destination shrinks by
+ * the same proportion, so an image smaller than its panel is letterboxed
+ * against the panel background instead of being stretched.
+ */
+export interface DrawRects {
+  readonly sx: number;
+  readonly sy: number;
+  readonly sw: number;
+  readonly sh: number;
+  readonly dx: number;
+  readonly dy: number;
+  readonly dw: number;
+  readonly dh: number;
+}
+
+export function drawRects(box: PanelBox, geom: PanelGeometry): DrawRects | null {
+  const W = box.image.width;
+  const H = box.image.height;
+  const scale = safe(geom.scale);
+
+  const sw = box.panel.width / scale;
+  const sh = box.panel.height / scale;
+  const sx = geom.u * W - sw / 2;
+  const sy = geom.v * H - sh / 2;
+
+  const cx0 = Math.max(0, sx);
+  const cy0 = Math.max(0, sy);
+  const cx1 = Math.min(W, sx + sw);
+  const cy1 = Math.min(H, sy + sh);
+  if (cx1 <= cx0 || cy1 <= cy0) return null;
+
+  return {
+    sx: cx0,
+    sy: cy0,
+    sw: cx1 - cx0,
+    sh: cy1 - cy0,
+    dx: (cx0 - sx) * scale,
+    dy: (cy0 - sy) * scale,
+    dw: (cx1 - cx0) * scale,
+    dh: (cy1 - cy0) * scale,
+  };
+}
+
+/**
+ * Panel rectangles for `n` panels: split by columns in landscape, by rows in
+ * portrait. `split` holds the fractional sizes (n-1 draggable separators give
+ * n fractions, summing to 1).
+ */
+export interface Rect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export function splitStage(stage: Size, count: number, axis: Axis, fractions: readonly number[]): Rect[] {
+  if (count <= 0) return [];
+  const total = fractions.slice(0, count).reduce((a, b) => a + b, 0);
+  const norm =
+    total > EPS && fractions.length >= count
+      ? fractions.slice(0, count).map((f) => f / total)
+      : new Array<number>(count).fill(1 / count);
+
+  const rects: Rect[] = [];
+  let offset = 0;
+  for (let i = 0; i < count; i++) {
+    const f = norm[i] ?? 1 / count;
+    if (axis === 'x') {
+      const w = stage.width * f;
+      rects.push({ x: offset, y: 0, width: w, height: stage.height });
+      offset += w;
+    } else {
+      const h = stage.height * f;
+      rects.push({ x: 0, y: offset, width: stage.width, height: h });
+      offset += h;
+    }
+  }
+  return rects;
+}

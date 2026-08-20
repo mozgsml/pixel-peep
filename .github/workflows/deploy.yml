@@ -1,0 +1,82 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  # Redeploy the current main without a new commit.
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PROJECT: ${{ vars.CLOUDFLARE_PROJECT_NAME || 'pixel-peep' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx vite build
+
+      - name: Remember the currently live deployment, for rollback
+        id: previous
+        run: |
+          set -euo pipefail
+          id=$(npx wrangler@3 pages deployment list --project-name="$PROJECT" \
+                 --environment=production --json 2>/dev/null \
+               | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                   try { const list = JSON.parse(s); console.log(list?.[0]?.id ?? ""); } catch { console.log(""); }
+                 })' || true)
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        id: deploy
+        run: |
+          set -euo pipefail
+          npx wrangler@3 pages deploy dist \
+            --project-name="$PROJECT" \
+            --branch=main \
+            --commit-dirty=true | tee deploy.log
+          url=$(grep -Eo 'https://[a-z0-9.-]+\.pages\.dev' deploy.log | tail -1)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test the deployed site
+        id: smoke
+        env:
+          # Actions runners ship Chrome; no browser download needed.
+          BASE_URL: ${{ steps.deploy.outputs.url }}
+        run: npm run smoke
+
+      - name: Roll back on a failed smoke test
+        if: failure() && steps.smoke.outcome == 'failure' && steps.previous.outputs.id != ''
+        run: |
+          # A silent degradation — usually _headers missing from the publish
+          # directory — is exactly what the smoke test exists to catch.
+          npx wrangler@3 pages deployment rollback "${{ steps.previous.outputs.id }}" \
+            --project-name="$PROJECT" --yes
+          echo "::error::Smoke-тест не прошёл, откатились на ${{ steps.previous.outputs.id }}"
+
+      - name: Upload the failure trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
