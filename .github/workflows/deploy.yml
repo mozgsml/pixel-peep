@@ -36,10 +36,40 @@ jobs:
 
       - name: Check the deploy credentials before touching anything
         run: |
-          # wrangler's own message for a missing account id is a confusing
-          # "authentication error"; say plainly what is not set.
+          set -uo pipefail
+          # Cloudflare answers every credential problem with the same opaque
+          # "Authentication error [code: 10000]". These two probes separate the
+          # cases that actually need different fixes.
           : "${CLOUDFLARE_API_TOKEN:?не задан секрет CLOUDFLARE_API_TOKEN (Settings → Environments → production)}"
           : "${CLOUDFLARE_ACCOUNT_ID:?не задан секрет CLOUDFLARE_ACCOUNT_ID (он же виден в адресе дашборда Cloudflare)}"
+
+          curl -sS https://api.cloudflare.com/client/v4/user/tokens/verify \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o verify.json
+          node -e '
+            const r = require("./verify.json");
+            if (!r.success) {
+              console.error("::error::Сам токен недействителен: " + JSON.stringify(r.errors));
+              console.error("Секрет CLOUDFLARE_API_TOKEN должен быть API Token (My Profile → API Tokens),");
+              console.error("а не Global API Key и не Account ID.");
+              process.exit(1);
+            }
+            console.log("Токен активен, статус:", r.result && r.result.status);
+          '
+
+          curl -sS "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects?per_page=1" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o access.json
+          node -e '
+            const r = require("./access.json");
+            if (r.success) { console.log("Доступ к Pages в этом аккаунте есть."); process.exit(0); }
+            console.error("::error::Токен живой, но до Pages этого аккаунта не достаёт: " + JSON.stringify(r.errors));
+            console.error("Обычно это одно из двух:");
+            console.error("  • у токена нет права Account → Cloudflare Pages → Edit,");
+            console.error("    либо в Account Resources выбран не тот аккаунт;");
+            console.error("  • в CLOUDFLARE_ACCOUNT_ID лежит Zone ID вместо Account ID.");
+            console.error("    Account ID — это 32 шестнадцатеричных символа сразу после");
+            console.error("    dash.cloudflare.com/ в адресной строке.");
+            process.exit(1);
+          '
 
       - name: Create the Pages project if it does not exist
         run: |
