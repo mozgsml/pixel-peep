@@ -58,16 +58,38 @@ jobs:
 
           curl -sS "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects?per_page=1" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o access.json
+          # Which accounts the token can see at all; tells apart "wrong id" from
+          # "right id, wrong permission". This log is public, so identifiers are
+          # only ever compared and masked, never printed in full.
+          curl -sS "https://api.cloudflare.com/client/v4/accounts?per_page=50" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o accounts.json
           node -e '
-            const r = require("./access.json");
-            if (r.success) { console.log("Доступ к Pages в этом аккаунте есть."); process.exit(0); }
-            console.error("::error::Токен живой, но до Pages этого аккаунта не достаёт: " + JSON.stringify(r.errors));
-            console.error("Обычно это одно из двух:");
-            console.error("  • у токена нет права Account → Cloudflare Pages → Edit,");
-            console.error("    либо в Account Resources выбран не тот аккаунт;");
-            console.error("  • в CLOUDFLARE_ACCOUNT_ID лежит Zone ID вместо Account ID.");
-            console.error("    Account ID — это 32 шестнадцатеричных символа сразу после");
-            console.error("    dash.cloudflare.com/ в адресной строке.");
+            const mask = (id) => id ? id.slice(0, 6) + "…" + id.slice(-4) : "(пусто)";
+            const wanted = process.env.CLOUDFLARE_ACCOUNT_ID;
+            const access = require("./access.json");
+            if (access.success) { console.log("Доступ к Pages в этом аккаунте есть."); process.exit(0); }
+
+            console.error("::error::Токен живой, но до Pages аккаунта " + mask(wanted) + " не достаёт: " +
+              JSON.stringify(access.errors));
+
+            const list = require("./accounts.json");
+            if (list.success && Array.isArray(list.result)) {
+              const ids = list.result.map((a) => a.id);
+              console.error("Токену видны аккаунты: " + ids.map(mask).join(", "));
+              if (!ids.includes(wanted)) {
+                console.error("→ CLOUDFLARE_ACCOUNT_ID не совпадает ни с одним из них.");
+                console.error("  Скорее всего в секрете Zone ID, а не Account ID. Account ID —");
+                console.error("  32 символа сразу после dash.cloudflare.com/ в адресной строке.");
+              } else {
+                console.error("→ Аккаунт верный, значит не хватает права.");
+                console.error("  My Profile → API Tokens → ваш токен → Edit:");
+                console.error("  нужна строка Account · Cloudflare Pages · Edit (именно Edit, не Read).");
+              }
+            } else {
+              console.error("Список аккаунтов этим токеном тоже не читается.");
+              console.error("Проверьте в токене: Account · Cloudflare Pages · Edit,");
+              console.error("и что в Account Resources выбран нужный аккаунт (а не «All accounts» из другого профиля).");
+            }
             process.exit(1);
           '
 
