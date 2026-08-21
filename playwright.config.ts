@@ -13,7 +13,8 @@ export default defineConfig({
   expect: { timeout: 60_000 },
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // A freshly deployed CDN edge can drop the first connection or two.
+  retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
     baseURL,

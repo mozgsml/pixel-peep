@@ -35,6 +35,14 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
 });
 
+test('the build under test is the one that was just deployed', async ({ page }) => {
+  // Only meaningful against a real deployment: it catches a smoke test that
+  // passed against the previous build because the new one had not propagated.
+  const expected = process.env.EXPECTED_SHA;
+  test.skip(!expected, 'EXPECTED_SHA не задан — проверять нечего');
+  await expect(page.locator('.build-info')).toContainText(expected!.slice(0, 7));
+});
+
 test('the page is cross-origin isolated', async ({ page }) => {
   await expect(page.locator('.brand-name')).toHaveText('Pixel Peep');
   const isolated = await page.evaluate(() => self.crossOriginIsolated);

@@ -151,14 +151,41 @@ jobs:
             --project-name="$PROJECT" \
             --branch=main \
             --commit-dirty=true | tee deploy.log
-          url=$(grep -Eo 'https://[a-z0-9.-]+\.pages\.dev' deploy.log | tail -1)
-          echo "url=$url" >> "$GITHUB_OUTPUT"
+          # The hashed per-deployment host is printed too, but the address that
+          # matters is the one people actually open.
+          echo "url=https://$PROJECT.pages.dev" >> "$GITHUB_OUTPUT"
+
+      - name: Wait until production serves this exact build
+        id: ready
+        run: |
+          set -uo pipefail
+          # Two things need waiting for, and both are silent: a brand-new
+          # project has no TLS certificate for its subdomain yet (the browser
+          # then fails with ERR_SSL_VERSION_OR_CIPHER_MISMATCH), and a redeploy
+          # takes a moment to propagate — during which the old build still
+          # answers, and a smoke test would happily pass against it.
+          #
+          # The entry bundle carries a content hash, so matching it proves the
+          # live site is serving this build and not the previous one.
+          entry=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' dist/index.html | head -1)
+          echo "жду сборку с $entry на ${{ steps.deploy.outputs.url }}"
+          for i in $(seq 1 60); do
+            body=$(curl -sS --max-time 15 "${{ steps.deploy.outputs.url }}/" 2>/dev/null || true)
+            if printf '%s' "$body" | grep -q "$entry"; then
+              echo "готово через $((i * 10))с"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::За 10 минут прод так и не отдал сборку с $entry"
+          exit 1
 
       - name: Smoke test the deployed site
         id: smoke
         env:
           # Actions runners ship Chrome; no browser download needed.
           BASE_URL: ${{ steps.deploy.outputs.url }}
+          EXPECTED_SHA: ${{ github.sha }}
         run: npm run smoke
 
       - name: Roll back on a failed smoke test
