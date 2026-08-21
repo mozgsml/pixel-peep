@@ -206,4 +206,5 @@ This is a measuring instrument, not a shop window:
 - [Adding a codec](codecs.md)
 - [Translations](i18n.md)
 - [Testing](testing.md)
-- [Deployment](deploy.md)
+- [Self-hosting](self-hosting.md)
+- [How this deploys](deploy.md)

@@ -95,7 +95,8 @@ Node 20.19+ or 22+. That is all — there is no backend, no configuration and no
 - [Adding a codec](docs/codecs.md) — one file and one line in the registry
 - [Translations](docs/i18n.md) — copy one file, translate the strings; partial ones are welcome
 - [Testing](docs/testing.md) — what runs, and what the tests do not catch
-- [Deployment](docs/deploy.md) — headers, hosting, CI/CD
+- [Self-hosting](docs/self-hosting.md) — put your own copy anywhere; two headers and a folder
+- [How this deploys](docs/deploy.md) — the Cloudflare and CI setup behind pixel-peep.pages.dev
 
 ## License
 
