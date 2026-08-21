@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { adapter as avif } from './avif.ts';
 import { adapter as debugBlur } from './debug-blur.ts';
 import { adapter as jpeg } from './jpeg.ts';
@@ -20,7 +21,7 @@ const byId = new Map(codecs.map((c) => [c.id, c]));
 
 export function getCodec(id: string): CodecAdapter {
   const codec = byId.get(id);
-  if (!codec) throw new Error(`Неизвестный формат: ${id}`);
+  if (!codec) throw new Error(t('error.unknownFormat', { id }));
   return codec;
 }
 

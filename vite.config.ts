@@ -1,5 +1,15 @@
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
+
+/** The "source on GitHub" link comes from package.json, never a second copy. */
+function repoUrl(): string {
+  const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+    repository?: { url?: string };
+  };
+  const raw = pkg.repository?.url ?? '';
+  return raw.replace(/^git\+/, '').replace(/\.git$/, '');
+}
 
 function gitSha(): string {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7);
@@ -25,6 +35,7 @@ export default defineConfig({
   define: {
     __BUILD_SHA__: JSON.stringify(gitSha()),
     __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+    __REPO_URL__: JSON.stringify(repoUrl()),
   },
   server: { headers: isolationHeaders },
   preview: { headers: isolationHeaders },

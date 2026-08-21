@@ -77,18 +77,18 @@ export const adapter: CodecAdapter = {
   extension: 'dblr',
   lossless: false,
   devOnly: true,
-  note: 'Фиктивный кодек: проверка того, что формат добавляется одним файлом',
+  note: 'codec.debugBlur.note',
   params: [
-    { kind: 'range', key: 'radius', label: 'Радиус', min: 0, max: 12, step: 1, default: 2 },
+    { kind: 'range', key: 'radius', label: 'param.radius', min: 0, max: 12, step: 1, default: 2 },
     {
       kind: 'range',
       key: 'levels',
-      label: 'Градаций',
+      label: 'param.levels',
       min: 2,
       max: 256,
       step: 1,
       default: 64,
-      hint: 'Квантование перед RLE — отсюда берётся «размер файла»',
+      hint: 'param.levels.hint',
     },
   ],
 
@@ -146,7 +146,7 @@ export const adapter: CodecAdapter = {
   async decode(bytes, signal) {
     throwIfAborted(signal);
     const view = new DataView(bytes);
-    if (view.getUint32(0) !== MAGIC) throw new Error('debug-blur: не тот контейнер');
+    if (view.getUint32(0) !== MAGIC) throw new Error('debug-blur: wrong container');
     const width = view.getUint32(4);
     const height = view.getUint32(8);
     const length = view.getUint32(12);

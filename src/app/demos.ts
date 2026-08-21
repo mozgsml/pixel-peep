@@ -36,7 +36,7 @@ function hashNoise(x: number, y: number, seed: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 }
 
-const target = make('target.png', 'Мишень', (ctx, w, h) => {
+const target = make('target.png', 'demo.target', (ctx, w, h) => {
   ctx.fillStyle = '#0f0f0f';
   ctx.fillRect(0, 0, w, h);
 
@@ -87,7 +87,7 @@ const target = make('target.png', 'Мишень', (ctx, w, h) => {
   ctx.fillText('pixel peep · test target', w * 0.05, h * 0.95);
 });
 
-const gradient = make('gradient.png', 'Градиент', (ctx, w, h) => {
+const gradient = make('gradient.png', 'demo.gradient', (ctx, w, h) => {
   const sky = ctx.createLinearGradient(0, 0, 0, h);
   sky.addColorStop(0, '#12213f');
   sky.addColorStop(0.45, '#3d5a86');
@@ -117,7 +117,7 @@ const gradient = make('gradient.png', 'Градиент', (ctx, w, h) => {
   ctx.putImageData(image, 0, 0);
 });
 
-const texture = make('texture.png', 'Текстура', (ctx, w, h) => {
+const texture = make('texture.png', 'demo.texture', (ctx, w, h) => {
   const image = ctx.createImageData(w, h);
   const data = image.data;
   for (let y = 0; y < h; y++) {

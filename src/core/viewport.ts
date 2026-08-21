@@ -26,6 +26,7 @@ export class Viewport {
   #sync: SyncMode = 'mirror';
   #align: AlignMode = 'contain';
   #axis: Axis = 'x';
+  #gap = 0;
   #listeners = new Set<() => void>();
 
   /**
@@ -40,7 +41,7 @@ export class Viewport {
   }
 
   get options(): LayoutOptions {
-    return { sync: this.#sync, align: this.#align, axis: this.#axis };
+    return { sync: this.#sync, align: this.#align, axis: this.#axis, gap: this.#gap };
   }
 
   get sync(): SyncMode {
@@ -91,6 +92,13 @@ export class Viewport {
   setAxis(axis: Axis): void {
     if (this.#axis === axis) return;
     this.#axis = axis;
+    this.#emit();
+  }
+
+  /** Splitter thickness in CSS pixels; `continuous` skips the image behind it. */
+  setGap(gap: number): void {
+    if (this.#gap === gap) return;
+    this.#gap = gap;
     this.#emit();
   }
 

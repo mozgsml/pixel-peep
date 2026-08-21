@@ -1,5 +1,6 @@
 import type { CodecDescriptor } from '../codecs/types.ts';
 import { bitsPerPixel } from '../core/metrics.ts';
+import { t } from '../i18n/index.ts';
 import { PanelRenderer } from '../render/panel-renderer.ts';
 import type { AppState, PanelState } from '../app/state.ts';
 import { panelSource } from '../app/state.ts';
@@ -14,11 +15,10 @@ export interface PanelHost {
   onActivate(index: number): void;
   onToggleDetails(): void;
   onRetry(index: number): void;
+  /** Open a file picker that fills this panel only. */
+  onLoad(index: number): void;
+  onDownload(index: number): void;
 }
-
-const PSNR_TOOLTIP =
-  'PSNR плохо коррелирует с восприятием: слегка сдвинутый по яркости кадр получит низкую ' +
-  'оценку, а замыленный — высокую. Решение принимается глазами, метрика лишь подсказка.';
 
 /** One panel: format picker, canvas, generated controls, metrics footer. */
 export class PanelView {
@@ -31,24 +31,28 @@ export class PanelView {
   #index: number;
   #host: PanelHost;
 
-  #format = el('select', { class: 'format-select', 'aria-label': 'Формат' });
+  #format = el('select', { class: 'format-select' });
   #note = el('span', { class: 'panel-note' });
   #badge = el('span', { class: 'panel-badge' });
+  #busy = el('span', { class: 'panel-busy', role: 'status' }, el('span', { class: 'spinner spinner-small' }));
+  #load = el('button', { type: 'button', class: 'button button-quiet panel-load' });
+  #download = el('button', { type: 'button', class: 'button button-quiet panel-download' });
   #overlay = el('div', { class: 'panel-overlay' });
   #size = el('span', { class: 'metric-value', 'data-metric': 'size' });
   #ratio = el('span', { class: 'metric-value', 'data-metric': 'ratio' });
   #psnr = el('span', { class: 'metric-value', 'data-metric': 'psnr' });
+  #sizeLabel = el('span', { class: 'metric-label' });
+  #ratioLabel = el('span', { class: 'metric-label' });
+  #psnrLabel = el('span', { class: 'metric-label' });
+  #psnrMetric: HTMLElement;
   #metricsRow = el('div', { class: 'panel-metrics' });
   #detailsRow = el('dl', { class: 'panel-details' });
   #detailsButton = el('button', { type: 'button', class: 'details-toggle', 'aria-expanded': 'false' }, '⋯');
   #canvas = el('canvas', { class: 'panel-canvas' });
-  #outOfFrame = el(
-    'div',
-    { class: 'panel-outside' },
-    'Область продолжения вне кадра — увеличьте масштаб или переключитесь на «Зеркало»',
-  );
+  #outOfFrame = el('div', { class: 'panel-outside' });
 
   #lastSchemaId = '';
+  #lastFormats: readonly CodecDescriptor[] = [];
 
   constructor(index: number, host: PanelHost) {
     this.#index = index;
@@ -56,6 +60,8 @@ export class PanelView {
 
     this.#format.addEventListener('change', () => host.onFormatChange(this.#index, this.#format.value));
     this.#detailsButton.addEventListener('click', () => host.onToggleDetails());
+    this.#load.addEventListener('click', () => host.onLoad(this.#index));
+    this.#download.addEventListener('click', () => host.onDownload(this.#index));
 
     this.params = createParamsView({
       onPreview: (key, value) => host.onParamPreview(this.#index, key, value),
@@ -64,20 +70,23 @@ export class PanelView {
 
     this.viewport = el(
       'div',
-      { class: 'panel-view', tabindex: '0', role: 'img', 'aria-label': 'Панель сравнения' },
+      { class: 'panel-view', tabindex: '0', role: 'img' },
       this.#canvas,
       this.#outOfFrame,
       this.#overlay,
     );
     this.paramsHost = el('div', { class: 'panel-params' }, this.params.root);
 
+    this.#psnrMetric = metric(this.#psnrLabel, this.#psnr);
+    this.#psnrMetric.classList.add('has-tooltip');
+
     const metrics = el(
       'div',
       { class: 'panel-metrics-row' },
-      metric('Размер', this.#size),
-      metric('От оригинала', this.#ratio),
-      metric('PSNR', this.#psnr, PSNR_TOOLTIP),
-      this.#detailsButton,
+      metric(this.#sizeLabel, this.#size),
+      metric(this.#ratioLabel, this.#ratio),
+      this.#psnrMetric,
+      el('div', { class: 'panel-actions' }, this.#download, this.#detailsButton),
     );
     this.#metricsRow.appendChild(metrics);
     this.#metricsRow.appendChild(this.#detailsRow);
@@ -85,7 +94,13 @@ export class PanelView {
     this.root = el(
       'section',
       { class: 'panel', 'data-index': String(index), 'data-testid': 'panel' },
-      el('header', { class: 'panel-head' }, this.#format, this.#note, this.#badge),
+      el(
+        'header',
+        { class: 'panel-head' },
+        this.#format,
+        this.#note,
+        el('div', { class: 'panel-head-actions' }, this.#busy, this.#badge, this.#load),
+      ),
       this.viewport,
       this.#metricsRow,
       // On narrow screens the layout moves this into the shared sheet.
@@ -109,18 +124,37 @@ export class PanelView {
 
   setFormats(descriptors: readonly CodecDescriptor[]): void {
     const id = descriptors.map((d) => d.id).join(',');
-    if (id === this.#lastSchemaId) return;
+    if (id === this.#lastSchemaId && descriptors === this.#lastFormats) return;
     this.#lastSchemaId = id;
+    this.#lastFormats = descriptors;
+    const selected = this.#format.value;
     clear(this.#format);
     for (const descriptor of descriptors) {
-      this.#format.appendChild(el('option', { value: descriptor.id }, descriptor.label));
+      this.#format.appendChild(el('option', { value: descriptor.id }, t(descriptor.label)));
     }
+    if (selected) this.#format.value = selected;
+  }
+
+  /** Called when the locale changes: option labels are baked into the DOM. */
+  rebuildFormats(descriptors: readonly CodecDescriptor[]): void {
+    this.#lastSchemaId = '';
+    this.setFormats(descriptors);
   }
 
   update(state: AppState, panel: PanelState, descriptor: CodecDescriptor | undefined): void {
     if (this.#format.value !== panel.formatId) this.#format.value = panel.formatId;
-    setText(this.#note, descriptor?.note ?? '');
+    this.#format.setAttribute('aria-label', t('panel.format'));
+    setText(this.#note, descriptor?.note ? t(descriptor.note) : '');
     this.params.update(descriptor?.params ?? [], panel.params);
+
+    setText(this.#load, t('panel.load'));
+    this.#load.title = t('panel.loadTitle');
+    setText(this.#sizeLabel, t('panel.metric.size'));
+    setText(this.#ratioLabel, t('panel.metric.ratio'));
+    setText(this.#psnrLabel, t('panel.metric.psnr'));
+    this.#psnrMetric.title = t('panel.psnrTooltip');
+    this.#detailsButton.title = t('panel.details');
+    setText(this.#outOfFrame, t('panel.outOfFrame'));
 
     const source = panelSource(state, panel);
     const isReference = panel.formatId === 'original';
@@ -132,12 +166,23 @@ export class PanelView {
     this.viewport.setAttribute(
       'aria-label',
       source
-        ? `${descriptor?.label ?? panel.formatId}, ${source.name}, ${source.width}×${source.height}`
-        : 'Панель без изображения',
+        ? t('panel.aria.image', {
+            format: t(descriptor?.label ?? panel.formatId),
+            name: source.name,
+            width: source.width,
+            height: source.height,
+          })
+        : t('panel.aria.empty'),
     );
 
     this.#updateBadge(state, panel);
     this.#updateOverlay(state, panel);
+    this.#updateDownload(panel, isReference);
+
+    // The point of a busy indicator here is a slider being dragged: the picture
+    // stays, so without this nothing on screen says a new encode is running.
+    toggleClass(this.#busy, 'is-visible', panel.status === 'encoding');
+    this.#busy.setAttribute('aria-label', t('panel.overlay.busy'));
 
     toggleClass(this.#metricsRow, 'is-hidden', !source);
     this.#detailsRow.hidden = !state.detailsOpen;
@@ -170,10 +215,22 @@ export class PanelView {
     if (state.detailsOpen) this.#renderDetails(panel, source.width, source.height, isReference, preview);
   }
 
+  /**
+   * Saving a preview would hand over a downscaled file under a full-size name,
+   * so the button waits for the full-resolution pass.
+   */
+  #updateDownload(panel: PanelState, isReference: boolean): void {
+    const ready = !!panel.result && panel.result.quality === 'full';
+    setText(this.#download, t('panel.download'));
+    this.#download.title = isReference ? t('panel.downloadOriginal') : t('panel.downloadTitle');
+    this.#download.disabled = !ready;
+    toggleClass(this.#download, 'is-hidden', !panel.result);
+  }
+
   #updateBadge(state: AppState, panel: PanelState): void {
     let text = '';
-    if (panel.result?.quality === 'proxy') text = 'предпросмотр';
-    if (state.flip && this.#index > 0) text = 'flip';
+    if (panel.result?.quality === 'proxy') text = t('panel.badge.preview');
+    if (state.flip && this.#index > 0) text = t('panel.badge.flip');
     setText(this.#badge, text);
     toggleClass(this.#badge, 'is-visible', text !== '');
   }
@@ -183,25 +240,25 @@ export class PanelView {
     let visible = false;
 
     if (panel.status === 'empty' || !panelSource(state, panel)) {
-      this.#overlay.appendChild(
-        el('div', { class: 'overlay-card overlay-empty' }, state.mode === 'photo' ? 'Перетащите файл сюда' : ''),
-      );
-      visible = state.mode === 'photo';
+      this.#overlay.appendChild(el('div', { class: 'overlay-card overlay-empty' }, t('panel.overlay.drop')));
+      visible = true;
     } else if (panel.status === 'error') {
       const card = el(
         'div',
         { class: 'overlay-card overlay-error' },
-        el('strong', {}, 'Кодек не справился'),
-        el('p', {}, panel.error ?? 'Неизвестная ошибка'),
-        el('p', { class: 'overlay-hint' }, 'Попробуйте другие параметры или другой формат.'),
+        el('strong', {}, t('panel.overlay.errorTitle')),
+        el('p', {}, panel.error ?? t('panel.overlay.errorUnknown')),
+        el('p', { class: 'overlay-hint' }, t('panel.overlay.errorHint')),
       );
-      const retry = el('button', { type: 'button', class: 'button' }, 'Повторить');
+      const retry = el('button', { type: 'button', class: 'button' }, t('panel.overlay.retry'));
       retry.addEventListener('click', () => this.#host.onRetry(this.#index));
       card.appendChild(retry);
       this.#overlay.appendChild(card);
       visible = true;
     } else if (panel.status === 'encoding' && !panel.result) {
-      this.#overlay.appendChild(el('div', { class: 'overlay-card overlay-busy' }, el('span', { class: 'spinner' }), 'Кодирование…'));
+      this.#overlay.appendChild(
+        el('div', { class: 'overlay-card overlay-busy' }, el('span', { class: 'spinner' }), t('panel.overlay.busy')),
+      );
       visible = true;
     }
 
@@ -216,16 +273,21 @@ export class PanelView {
     const result = panel.result;
     const rows: Array<[string, string]> = [];
 
-    rows.push(['Размер кадра', fmt.dimensions(srcW, srcH)]);
+    rows.push([t('panel.detail.frameSize'), fmt.dimensions(srcW, srcH)]);
     if (result) {
-      rows.push(['bpp', fmt.bpp(bitsPerPixel(result.size, result.width, result.height))]);
-      rows.push(['Кодирование', fmt.ms(result.encodeMs)]);
-      rows.push(['Декодирование', fmt.ms(result.decodeMs)]);
-      if (preview) rows.push(['Разрешение', `прокси ${fmt.dimensions(result.width, result.height)}`]);
+      rows.push([t('panel.detail.bpp'), fmt.bpp(bitsPerPixel(result.size, result.width, result.height))]);
+      rows.push([t('panel.detail.encode'), fmt.ms(result.encodeMs)]);
+      rows.push([t('panel.detail.decode'), fmt.ms(result.decodeMs)]);
+      if (preview) {
+        rows.push([
+          t('panel.detail.resolution'),
+          t('panel.detail.proxy', { size: fmt.dimensions(result.width, result.height) }),
+        ]);
+      }
     }
     if (!isReference && panel.metrics) {
-      rows.push(['SSIM', fmt.ssim(panel.metrics.ssim)]);
-      rows.push(['MSE', panel.metrics.mse.toFixed(3)]);
+      rows.push([t('panel.detail.ssim'), fmt.ssim(panel.metrics.ssim)]);
+      rows.push([t('panel.detail.mse'), panel.metrics.mse.toFixed(3)]);
     }
 
     for (const [term, value] of rows) {
@@ -247,11 +309,6 @@ export class PanelView {
   }
 }
 
-function metric(label: string, value: HTMLElement, title?: string): HTMLElement {
-  const node = el('div', { class: 'metric' }, el('span', { class: 'metric-label' }, label), value);
-  if (title) {
-    node.title = title;
-    node.classList.add('has-tooltip');
-  }
-  return node;
+function metric(label: HTMLElement, value: HTMLElement): HTMLElement {
+  return el('div', { class: 'metric' }, label, value);
 }

@@ -69,7 +69,7 @@ test('30 format switches on a 12 Mpx photo do not grow the heap', async ({ page 
   const growth = after - before;
   // eslint-disable-next-line no-console
   console.log(`heap: ${before.toFixed(1)} MB → ${after.toFixed(1)} MB (+${growth.toFixed(1)})`);
-  expect(growth, `heap выросла на ${growth.toFixed(1)} МБ за ${SWITCHES} переключений`).toBeLessThan(
+  expect(growth, `heap grew by ${growth.toFixed(1)} MB over ${SWITCHES} switches`).toBeLessThan(
     MAX_GROWTH_MB,
   );
 });

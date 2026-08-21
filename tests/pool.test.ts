@@ -85,8 +85,8 @@ describe('WorkerPool', () => {
     const pool = makePool(1);
     const task = pool.run(request);
     const worker = FakeWorker.instances[0]!;
-    worker.emit({ type: 'error', id: worker.running, name: 'Error', message: 'кодек упал' });
-    await expect(task).rejects.toThrow('кодек упал');
+    worker.emit({ type: 'error', id: worker.running, name: 'Error', message: 'the codec fell over' });
+    await expect(task).rejects.toThrow('the codec fell over');
     pool.terminate();
   });
 

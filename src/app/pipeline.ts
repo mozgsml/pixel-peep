@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { REFERENCE_FORMAT } from '../codecs/registry.ts';
 import { AbortError, type ParamValue } from '../codecs/types.ts';
 import { LruCache, cacheKey } from '../core/cache.ts';
@@ -76,6 +77,13 @@ export class EncodePipeline {
       });
     };
 
+    // Marked busy here rather than inside `#run`: a dragged slider spends the
+    // debounce window doing nothing visible otherwise, and the picture on
+    // screen still belongs to the previous settings.
+    if (panel.formatId !== REFERENCE_FORMAT && panel.sourceId) {
+      this.#store.set((s) => ({ panels: updatePanel(s, index, { status: 'encoding', error: undefined }) }));
+    }
+
     if (mode === 'preview') next.timer = setTimeout(start, PREVIEW_DEBOUNCE_MS);
     else start();
   }
@@ -133,8 +141,6 @@ export class EncodePipeline {
       this.#publish(index, job, originalResult(source), null, null);
       return;
     }
-
-    this.#store.set((s) => ({ panels: updatePanel(s, index, { status: 'encoding', error: undefined }) }));
 
     // Proxy first for instant feedback, then full size. A cached full result
     // makes the proxy pass pointless, so it is skipped.
@@ -266,7 +272,7 @@ export class EncodePipeline {
       { signal, transfer: [raw.data] },
     );
 
-    if (!response.decoded) throw new Error('Кодек не вернул пиксели');
+    if (!response.decoded) throw new Error(t('error.noPixels'));
     const decoded = fromRaw(response.decoded);
     const result: EncodeResult = {
       bytes: response.bytes,

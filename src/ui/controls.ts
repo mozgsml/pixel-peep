@@ -1,4 +1,5 @@
 import type { ParamSchema, ParamValue } from '../codecs/types.ts';
+import { getLocale, t } from '../i18n/index.ts';
 import { el, setText } from './dom.ts';
 
 /**
@@ -23,23 +24,26 @@ export interface ParamsCallbacks {
 export function createParamsView(callbacks: ParamsCallbacks): ParamsView {
   const root = el('div', { class: 'params' });
   let currentSchema: ParamSchema | null = null;
+  let builtFor = '';
   const refresh = new Map<string, (values: Readonly<Record<string, ParamValue>>) => void>();
 
   function build(schema: ParamSchema): void {
     root.replaceChildren();
     refresh.clear();
     currentSchema = schema;
+    builtFor = getLocale();
 
     if (schema.length === 0) {
-      root.appendChild(el('p', { class: 'params-empty' }, 'У этого формата нет параметров'));
+      root.appendChild(el('p', { class: 'params-empty' }, t('params.empty')));
       return;
     }
 
     for (const item of schema) {
       const id = `p-${Math.random().toString(36).slice(2, 8)}-${item.key}`;
       const row = el('div', { class: `param param-kind-${item.kind}` });
-      const label = el('label', { class: 'param-label', for: id }, item.label);
-      if (item.hint) label.title = item.hint;
+      // Schemas carry message keys; `t()` returns anything else unchanged.
+      const label = el('label', { class: 'param-label', for: id }, t(item.label));
+      if (item.hint) label.title = t(item.hint);
 
       switch (item.kind) {
         case 'range': {
@@ -106,7 +110,8 @@ export function createParamsView(callbacks: ParamsCallbacks): ParamsView {
   return {
     root,
     update(schema, values) {
-      if (schema !== currentSchema) build(schema);
+      // Labels are baked into the DOM, so a locale switch has to rebuild them.
+      if (schema !== currentSchema || builtFor !== getLocale()) build(schema);
       for (const apply of refresh.values()) apply(values);
     },
   };

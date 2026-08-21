@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { type PanelBox, type PanelGeometry, drawRects } from '../core/geometry.ts';
 import { LruCache } from '../core/cache.ts';
 import { type AnyContext, MipPyramid } from './downscale.ts';
@@ -57,7 +58,7 @@ export class PanelRenderer {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-    if (!ctx) throw new Error('2D-контекст недоступен');
+    if (!ctx) throw new Error(t('error.noContext'));
     this.#ctx = ctx;
   }
 

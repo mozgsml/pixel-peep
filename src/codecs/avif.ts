@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { type CodecAdapter, bool, num, str, throwIfAborted } from './types.ts';
 
 /**
@@ -21,18 +22,18 @@ export const adapter: CodecAdapter = {
     {
       kind: 'range',
       key: 'quality',
-      label: 'Качество',
+      label: 'param.quality',
       min: 0,
       max: 100,
       step: 1,
       default: 50,
       enabledWhen: (p) => p['lossless'] !== true,
     },
-    { kind: 'toggle', key: 'lossless', label: 'Без потерь', default: false },
+    { kind: 'toggle', key: 'lossless', label: 'param.lossless', default: false },
     {
       kind: 'select',
       key: 'subsampling',
-      label: 'Цветность',
+      label: 'param.subsampling',
       options: [
         { value: '420', label: '4:2:0' },
         { value: '444', label: '4:4:4' },
@@ -43,12 +44,12 @@ export const adapter: CodecAdapter = {
     {
       kind: 'range',
       key: 'effort',
-      label: 'Усилие',
+      label: 'param.effort',
       min: 0,
       max: 10,
       step: 1,
       default: 4,
-      hint: 'Больше — заметно медленнее. 10 может занять минуты на полном размере',
+      hint: 'param.effort.avifHint',
     },
   ],
 
@@ -72,7 +73,7 @@ export const adapter: CodecAdapter = {
     const { default: decode } = await import('@jsquash/avif/decode');
     throwIfAborted(signal);
     const result = await decode(bytes);
-    if (!result) throw new Error('AVIF: декодер вернул пустой результат');
+    if (!result) throw new Error(t('error.avifEmpty'));
     return result;
   },
 

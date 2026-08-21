@@ -15,19 +15,19 @@ export const adapter: CodecAdapter = {
   lossless: false,
   note: 'mozjpeg',
   params: [
-    { kind: 'range', key: 'quality', label: 'Качество', min: 1, max: 100, step: 1, default: 80 },
+    { kind: 'range', key: 'quality', label: 'param.quality', min: 1, max: 100, step: 1, default: 80 },
     {
       kind: 'select',
       key: 'subsampling',
-      label: 'Цветность',
+      label: 'param.subsampling',
       options: [
         { value: '420', label: '4:2:0' },
         { value: '444', label: '4:4:4' },
       ],
       default: '420',
-      hint: '4:4:4 сохраняет полное цветовое разрешение — заметно на резких цветных границах',
+      hint: 'param.subsampling.hint',
     },
-    { kind: 'toggle', key: 'progressive', label: 'Прогрессивный', default: true },
+    { kind: 'toggle', key: 'progressive', label: 'param.progressive', default: true },
   ],
 
   async encode(image, params, signal) {

@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { AbortError } from '../codecs/types.ts';
 import type { HostEnvelope, WorkerEnvelope, WorkerRequest } from './protocol.ts';
 
@@ -134,7 +135,7 @@ export class WorkerPool {
     worker.addEventListener('error', (event) => {
       const task = slot.task;
       slot.task = null;
-      if (task) this.#settle(task, () => task.reject(new Error(event.message || 'Ошибка воркера')));
+      if (task) this.#settle(task, () => task.reject(new Error(event.message || t('error.workerFailed'))));
       this.#pump();
     });
 
@@ -162,7 +163,7 @@ export class WorkerPool {
       // A task that was mid-flight will never report back now.
       const task = slot.task;
       slot.task = null;
-      if (task) this.#settle(task, () => task.reject(new AbortError('Пул воркеров остановлен')));
+      if (task) this.#settle(task, () => task.reject(new AbortError(t('error.poolStopped'))));
     }
     this.#slots = [];
     for (const task of this.#queue) this.#settle(task, () => task.reject(new AbortError()));

@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 import { orientationTransform, readOrientation, swapsAxes } from '../core/exif.ts';
 import {
   type ImageSource,
@@ -11,7 +12,7 @@ import { context2d, createCanvas, downscaleImageData } from '../render/downscale
 
 export class UnsupportedFileError extends Error {
   constructor(public readonly fileName: string) {
-    super(`Формат файла не распознан: ${fileName}`);
+    super(t('error.unrecognisedFile', { name: fileName }));
     this.name = 'UnsupportedFileError';
   }
 }
@@ -38,7 +39,7 @@ async function decodeHeif(buffer: ArrayBuffer): Promise<ImageData> {
   const decoder = new libheif.HeifDecoder();
   const images = decoder.decode(buffer);
   const image = images.find((i) => i.is_primary()) ?? images[0];
-  if (!image) throw new Error('HEIC: в файле нет изображений');
+  if (!image) throw new Error(t('error.heicNoImages'));
 
   const width = image.get_width();
   const height = image.get_height();
@@ -46,7 +47,7 @@ async function decodeHeif(buffer: ArrayBuffer): Promise<ImageData> {
 
   await new Promise<void>((resolve, reject) => {
     image.display(target, (result) => {
-      if (!result) reject(new Error('HEIC: ошибка декодирования'));
+      if (!result) reject(new Error(t('error.heicDecode')));
       else resolve();
     });
   });
@@ -86,10 +87,16 @@ function applyOrientation(image: ImageData, orientation: number): ImageData {
   return result;
 }
 
+/** A message key plus its values, resolved by the interface at render time. */
+export interface LoadWarning {
+  readonly key: string;
+  readonly vars?: Readonly<Record<string, string | number>>;
+}
+
 export interface LoadedFile {
   readonly source: ImageSource;
   /** Warnings worth surfacing without blocking the user. */
-  readonly warnings: string[];
+  readonly warnings: LoadWarning[];
 }
 
 export async function loadImageFile(file: File | Blob, name: string): Promise<LoadedFile> {
@@ -97,7 +104,7 @@ export async function loadImageFile(file: File | Blob, name: string): Promise<Lo
   const type = detectFileType(buffer);
   if (!type) throw new UnsupportedFileError(name);
 
-  const warnings: string[] = [];
+  const warnings: LoadWarning[] = [];
 
   let raw: ImageData;
   if (type.needsWasm === 'heif') {
@@ -109,7 +116,10 @@ export async function loadImageFile(file: File | Blob, name: string): Promise<Lo
       raw = await decodeNative(buffer, type.mime);
     } catch (error) {
       throw new Error(
-        `Браузер не смог декодировать ${type.label}: ${error instanceof Error ? error.message : String(error)}`,
+        t('error.decodeFailed', {
+          label: type.label,
+          message: error instanceof Error ? error.message : String(error),
+        }),
       );
     }
   }
@@ -118,10 +128,7 @@ export async function loadImageFile(file: File | Blob, name: string): Promise<Lo
   const pixels = full.width * full.height;
 
   if (pixels > LARGE_IMAGE_PIXELS) {
-    warnings.push(
-      `Изображение ${(pixels / 1e6).toFixed(0)} Мп — кодирование в полном размере может занять минуты ` +
-        'и не поместиться в память на мобильных. Включён режим работы на прокси.',
-    );
+    warnings.push({ key: 'notice.largeImage', vars: { megapixels: (pixels / 1e6).toFixed(0) } });
   }
 
   const scale = proxyScale(full.width, full.height, PROXY_MAX_PIXELS);

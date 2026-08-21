@@ -116,10 +116,18 @@ export function visibleSpan(box: PanelBox, scale: number): { visW: number; visH:
 
 /**
  * Keep the visible window inside the image.
- * When the image already fits along an axis (`vis >= 1`) it is centred.
+ *
+ * When the image is larger than the panel (`vis < 1`) the window is held
+ * inside it, so the panel is never part background.
+ *
+ * When the image already fits (`vis >= 1`) it used to be pinned to the centre,
+ * which made a small image impossible to move — and in `continuous` mode it
+ * then never reached the next panel at all. It is free to move instead, bounded
+ * so that the centre of the panel stays somewhere inside the image: the frame
+ * can be nudged aside but never pushed off screen entirely.
  */
 export function clampCentre(centre: number, vis: number): number {
-  if (vis >= 1) return 0.5;
+  if (vis >= 1) return clamp(centre, 0, 1);
   return clamp(centre, vis / 2, 1 - vis / 2);
 }
 
@@ -173,6 +181,12 @@ export interface LayoutOptions {
   readonly sync: SyncMode;
   readonly align: AlignMode;
   readonly axis: Axis;
+  /**
+   * Width of the splitter between two panels, in CSS pixels. `continuous`
+   * has to skip the image hidden behind it, or the seam is off by exactly
+   * those pixels — visibly so once the divider has been dragged.
+   */
+  readonly gap?: number;
 }
 
 /**
@@ -211,10 +225,11 @@ export function layoutGeometry(
     if (prev === null) {
       centre = leaderCentre;
     } else if (opts.sync === 'continuous') {
+      const gap = gapSpan(box, scale, opts);
       centre =
         opts.axis === 'x'
-          ? { u: prev.u + prev.visW / 2 + visW / 2, v: prev.v }
-          : { u: prev.u, v: prev.v + prev.visH / 2 + visH / 2 };
+          ? { u: prev.u + prev.visW / 2 + gap + visW / 2, v: prev.v }
+          : { u: prev.u, v: prev.v + prev.visH / 2 + gap + visH / 2 };
     } else {
       centre = leaderCentre;
     }
@@ -225,6 +240,14 @@ export function layoutGeometry(
   }
 
   return out;
+}
+
+/** The splitter, measured in fractions of this panel's image along the axis. */
+function gapSpan(box: PanelBox, scale: number, opts: LayoutOptions): number {
+  const gap = opts.gap ?? 0;
+  if (gap <= 0) return 0;
+  const extent = opts.axis === 'x' ? box.image.width : box.image.height;
+  return gap / (safe(extent) * safe(scale));
 }
 
 /**
@@ -251,8 +274,9 @@ export function leaderCentreFor(
     const scale = scaleForZoom(fitScale(box, opts.align), view.z);
     const vis = visibleSpan(box, scale);
     if (prevVis) {
-      if (opts.axis === 'x') offsetU += prevVis.visW / 2 + vis.visW / 2;
-      else offsetV += prevVis.visH / 2 + vis.visH / 2;
+      const gap = gapSpan(box, scale, opts);
+      if (opts.axis === 'x') offsetU += prevVis.visW / 2 + gap + vis.visW / 2;
+      else offsetV += prevVis.visH / 2 + gap + vis.visH / 2;
     }
     prevVis = vis;
   }

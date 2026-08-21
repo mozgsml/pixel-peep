@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.ts';
 /**
  * Multi-pass downsampling and mip pyramids.
  *
@@ -23,7 +24,7 @@ export function createCanvas(width: number, height: number): AnyCanvas {
 
 export function context2d(canvas: AnyCanvas): AnyContext {
   const ctx = canvas.getContext('2d', { alpha: true, willReadFrequently: false }) as AnyContext | null;
-  if (!ctx) throw new Error('2D-контекст недоступен');
+  if (!ctx) throw new Error(t('error.noContext'));
   return ctx;
 }
 

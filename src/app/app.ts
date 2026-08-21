@@ -1,20 +1,21 @@
-import { DEFAULT_FORMAT, REFERENCE_FORMAT, findCodec, listCodecs } from '../codecs/registry.ts';
+import { REFERENCE_FORMAT, findCodec, listCodecs } from '../codecs/registry.ts';
 import { type ParamValue, defaultParams, normaliseParams } from '../codecs/types.ts';
 import { type AlignMode, type Axis, type PanelBox, type SyncMode, drawRects } from '../core/geometry.ts';
 import { type ImageSource, SUPPORTED_INPUT_LABELS } from '../core/image-source.ts';
 import { Viewport } from '../core/viewport.ts';
+import { type Locale, setLocale, t } from '../i18n/index.ts';
 import { UnsupportedFileError, loadImageFile } from '../io/decode-file.ts';
 import { RenderLoop, TextureStore } from '../render/panel-renderer.ts';
 import { el, toggleClass } from '../ui/dom.ts';
 import { EmptyState } from '../ui/empty-state.ts';
-import { Layout } from '../ui/layout.ts';
+import { Layout, SPLITTER_SIZE } from '../ui/layout.ts';
 import { NoticeBar } from '../ui/notices.ts';
 import { PanelView } from '../ui/panel.ts';
 import { Toolbar } from '../ui/toolbar.ts';
 import { attachViewportInput } from '../ui/viewport-input.ts';
 import { DEMOS, demoToFile } from './demos.ts';
 import { EncodePipeline } from './pipeline.ts';
-import { type AppStore, type Mode, createStore, notice, panelSource, updatePanel } from './state.ts';
+import { type AppStore, createStore, notice, panelSource, updatePanel } from './state.ts';
 
 /** Above this the tool works on the proxy only, to stay inside mobile memory. */
 const PROXY_ONLY_PIXELS = 40_000_000;
@@ -33,9 +34,12 @@ export class App {
   #empty: EmptyState;
   #loop: RenderLoop;
   #fileInput: HTMLInputElement;
+  /** Panel a file picker or a drop is aimed at; `null` means "every panel". */
+  #fileTarget: number | null = null;
   #dropTarget: number | null = null;
   #loading = el('div', { class: 'loading-veil', role: 'status', 'aria-live': 'polite' });
   #loadingText = el('span', { class: 'loading-text' });
+  #statusHint = el('span', { class: 'status-hint' });
   #interacting = false;
   #detachers: Array<() => void> = [];
 
@@ -44,8 +48,7 @@ export class App {
     this.#pipeline = new EncodePipeline(this.store);
 
     this.#toolbar = new Toolbar({
-      onMode: (mode) => this.setMode(mode),
-      onOpen: () => this.#fileInput.click(),
+      onOpen: () => this.#pickFiles(null),
       onZoom: (z) => this.viewport.zoomTo(z, this.store.state.activePanel, null),
       onZoomStep: (delta) => this.viewport.zoomBy(delta, this.store.state.activePanel, null),
       onFit: () => this.viewport.zoomTo(0, this.store.state.activePanel, null),
@@ -71,6 +74,7 @@ export class App {
         this.store.set({ diffGain });
         this.#loop.invalidate();
       },
+      onLocale: (locale) => this.setLocale(locale),
     });
 
     this.#layout = new Layout({
@@ -88,7 +92,7 @@ export class App {
     );
 
     this.#empty = new EmptyState(
-      () => this.#fileInput.click(),
+      () => this.#pickFiles(null),
       (demo) => void this.#openDemo(demo),
       DEMOS,
     );
@@ -101,8 +105,10 @@ export class App {
     });
     this.#fileInput.addEventListener('change', () => {
       const files = [...(this.#fileInput.files ?? [])];
+      const target = this.#fileTarget;
       this.#fileInput.value = '';
-      void this.openFiles(files);
+      this.#fileTarget = null;
+      void this.openFiles(files, target ?? undefined);
     });
 
     this.root = el(
@@ -115,7 +121,7 @@ export class App {
       el(
         'footer',
         { class: 'statusbar' },
-        el('span', { class: 'status-hint' }, 'Пробел — flip-тест · двойной клик — 1:1 · 0 / 1 — вписать / 100%'),
+        this.#statusHint,
         el('span', { class: 'build-info' }, `${__BUILD_SHA__} · ${__BUILD_DATE__}`),
       ),
       this.#fileInput,
@@ -128,6 +134,7 @@ export class App {
     this.#buildPanels();
     this.#bindGlobalEvents();
 
+    this.viewport.setGap(SPLITTER_SIZE);
     this.viewport.subscribe(() => {
       this.#loop.invalidate();
       this.#toolbar.update(this.store.state, this.viewport);
@@ -135,15 +142,10 @@ export class App {
     this.store.subscribe(() => this.#render());
 
     this.#applyAxis();
+    this.#applyDocumentLocale();
     this.#render();
 
-    if (!this.store.state.crossOriginIsolated) {
-      this.#notify(
-        'warn',
-        'Заголовки COOP/COEP не настроены: страница не изолирована, wasm работает без потоков и SIMD. ' +
-          'AVIF и JPEG XL будут кодироваться в разы медленнее.',
-      );
-    }
+    if (!this.store.state.crossOriginIsolated) this.#notify('warn', 'notice.coi');
   }
 
   // ---------------------------------------------------------------- panels
@@ -163,6 +165,8 @@ export class App {
         },
         onToggleDetails: () => this.store.set((s) => ({ detailsOpen: !s.detailsOpen })),
         onRetry: (i) => this.#pipeline.schedule(i, 'final'),
+        onLoad: (i) => this.#pickFiles(i),
+        onDownload: (i) => this.download(i),
       });
 
       this.#detachers.push(
@@ -180,9 +184,9 @@ export class App {
     this.#layout.setPanels(this.#panels);
   }
 
+  /** A drop aimed at one panel replaces only that panel's photo. */
   #attachPanelDrop(view: PanelView, index: number): void {
     view.root.addEventListener('dragover', (event) => {
-      if (this.store.state.mode !== 'photo') return;
       event.preventDefault();
       this.#dropTarget = index;
       toggleClass(view.root, 'is-drop-target', true);
@@ -299,23 +303,44 @@ export class App {
 
   // ------------------------------------------------------------------ files
 
+  #pickFiles(target: number | null): void {
+    this.#fileTarget = target;
+    this.#fileInput.multiple = target === null;
+    this.#fileInput.click();
+  }
+
+  /**
+   * `targetPanel` undefined means the file belongs to every panel — the usual
+   * "one photo, several codecs" case. Several files at once are dealt out to
+   * consecutive panels instead, which is how two shots get compared.
+   */
   async openFiles(files: File[], targetPanel?: number): Promise<void> {
     const images = files.filter((f) => f.size > 0);
     if (images.length === 0) return;
 
-    this.store.set({ loading: images[0]!.name });
+    // More files than panels would decode images nothing can show, and each
+    // one is tens of megabytes of ImageData.
+    const panelCount = this.store.state.panels.length;
+    const spread = targetPanel === undefined && images.length > 1;
+    const first = targetPanel ?? 0;
+    const accepted = spread || targetPanel !== undefined ? images.slice(0, panelCount - first) : images.slice(0, 1);
+
+    this.store.set({ loading: accepted[0]!.name });
     try {
-      for (let i = 0; i < images.length; i++) {
-        const file = images[i]!;
+      for (let i = 0; i < accepted.length; i++) {
+        const file = accepted[i]!;
         const loaded = await loadImageFile(file, file.name);
-        for (const warning of loaded.warnings) this.#notify('warn', warning);
-        this.#adoptSource(loaded.source, targetPanel !== undefined ? targetPanel + i : undefined);
+        for (const warning of loaded.warnings) this.#notify('warn', warning.key, warning.vars);
+        this.#adoptSource(loaded.source, spread || targetPanel !== undefined ? first + i : undefined);
       }
     } catch (error) {
       if (error instanceof UnsupportedFileError) {
-        this.#notify('error', `${error.message}. Поддерживаются: ${SUPPORTED_INPUT_LABELS}.`);
+        this.#notify('error', 'notice.unsupported', {
+          message: error.message,
+          list: SUPPORTED_INPUT_LABELS,
+        });
       } else {
-        this.#notify('error', error instanceof Error ? error.message : String(error));
+        this.#notifyRaw('error', error instanceof Error ? error.message : String(error));
       }
     } finally {
       this.store.set({ loading: null });
@@ -323,146 +348,114 @@ export class App {
   }
 
   async #openDemo(demo: (typeof DEMOS)[number]): Promise<void> {
-    this.store.set({ loading: demo.label });
+    this.store.set({ loading: t(demo.label) });
     try {
       const file = await demoToFile(demo);
       const loaded = await loadImageFile(file, file.name);
       this.#adoptSource(loaded.source);
     } catch (error) {
-      this.#notify('error', error instanceof Error ? error.message : String(error));
+      this.#notifyRaw('error', error instanceof Error ? error.message : String(error));
     } finally {
       this.store.set({ loading: null });
     }
   }
 
   /**
-   * In codec mode a new file replaces the single shared source; in photo mode
-   * it lands in one panel and the rest keep theirs.
+   * Without an index the photo lands in every panel; with one it replaces that
+   * panel alone and the others keep theirs.
    */
   #adoptSource(source: ImageSource, panelIndex?: number): void {
     const state = this.store.state;
     const proxyOnly = source.width * source.height > PROXY_ONLY_PIXELS;
+    const reset = {
+      result: null,
+      metrics: null,
+      diff: null,
+      status: 'idle' as const,
+    };
 
-    if (state.mode === 'codec' || panelIndex === undefined) {
-      const previous = state.sources.map((s) => s.id);
-      const panels = state.panels.map((panel, index) => ({
-        ...panel,
-        sourceId: state.mode === 'codec' || index === 0 || !panel.sourceId ? source.id : panel.sourceId,
-        result: null,
-        metrics: null,
-        diff: null,
-        status: 'idle' as const,
-        revision: panel.revision + 1,
-      }));
-      const keep = new Set(panels.map((p) => p.sourceId));
-      this.store.set({
-        sources: [source, ...state.sources.filter((s) => keep.has(s.id))],
-        panels,
-        proxyOnly,
-      });
-      for (const id of previous) if (!keep.has(id)) this.#pipeline.releaseSource(id);
-    } else {
-      const panels = updatePanel(state, panelIndex, (panel) => ({
-        sourceId: source.id,
-        result: null,
-        metrics: null,
-        diff: null,
-        status: 'idle' as const,
-        revision: panel.revision + 1,
-      }));
-      const keep = new Set(panels.map((p) => p.sourceId));
-      this.store.set({
-        sources: [source, ...state.sources.filter((s) => keep.has(s.id))],
-        panels,
-        proxyOnly: proxyOnly || state.proxyOnly,
-      });
-    }
+    const panels = state.panels.map((panel, index) => {
+      if (panelIndex !== undefined && index !== panelIndex) return panel;
+      return { ...panel, ...reset, sourceId: source.id, revision: panel.revision + 1 };
+    });
+
+    const keep = new Set(panels.map((p) => p.sourceId));
+    const dropped = state.sources.filter((s) => !keep.has(s.id)).map((s) => s.id);
+
+    this.store.set({
+      sources: [source, ...state.sources.filter((s) => keep.has(s.id) && s.id !== source.id)],
+      panels,
+      proxyOnly: panelIndex === undefined ? proxyOnly : proxyOnly || state.proxyOnly,
+    });
+    for (const id of dropped) this.#pipeline.releaseSource(id);
 
     if (proxyOnly) {
-      this.#notify(
-        'warn',
-        `Снимок ${(source.width * source.height / 1e6).toFixed(0)} Мп — работаем на прокси ` +
-          `${source.proxy.width}×${source.proxy.height}, чтобы не упереться в память.`,
-      );
+      this.#notify('warn', 'notice.proxyOnly', {
+        megapixels: ((source.width * source.height) / 1e6).toFixed(0),
+        width: source.proxy.width,
+        height: source.proxy.height,
+      });
     }
 
     this.viewport.reset();
     this.#measure();
-    this.#pipeline.scheduleAll('final');
+    if (panelIndex === undefined) this.#pipeline.scheduleAll('final');
+    else this.#pipeline.schedule(panelIndex, 'final');
+  }
+
+  /** Saves what the panel is actually showing, under a name that says so. */
+  download(index: number): void {
+    const state = this.store.state;
+    const panel = state.panels[index];
+    if (!panel?.result || panel.result.quality !== 'full') return;
+    const source = panelSource(state, panel);
+    if (!source) return;
+
+    const isReference = panel.formatId === REFERENCE_FORMAT;
+    const codec = findCodec(panel.formatId);
+    const stem = source.name.replace(/\.[^.]+$/, '') || 'image';
+    const name = isReference ? source.name : `${stem}.${codec?.extension ?? 'bin'}`;
+    const mime = isReference ? source.mime : (codec?.mime ?? 'application/octet-stream');
+
+    const url = URL.createObjectURL(new Blob([panel.result.bytes], { type: mime }));
+    const link = el('a', { href: url, download: name });
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Revoked on the next tick: Safari needs the URL alive when the click lands.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   // ------------------------------------------------------------------ state
 
-  setMode(mode: Mode): void {
-    const state = this.store.state;
-    if (state.mode === mode) return;
+  setLocale(locale: Locale): void {
+    if (this.store.state.locale === locale) return;
+    setLocale(locale);
+    this.store.set({ locale });
+    // Labels are baked into the DOM when a control is created, so the pieces
+    // that are built once have to be built again.
+    this.#toolbar.build();
+    this.#empty.build();
+    const descriptors = listCodecs(this.store.state.devMode);
+    for (const view of this.#panels) view.rebuildFormats(descriptors);
+    this.#applyDocumentLocale();
+    this.#render();
+  }
 
-    if (mode === 'codec') {
-      // One source for everyone; codec settings stay per panel.
-      const sourceId = state.panels[0]?.sourceId || state.sources[0]?.id || '';
-      const panels = state.panels.map((panel, index) => ({
-        ...panel,
-        sourceId,
-        formatId: index === 0 ? REFERENCE_FORMAT : panel.formatId === REFERENCE_FORMAT ? DEFAULT_FORMAT : panel.formatId,
-        params: panel.formatId === REFERENCE_FORMAT && index > 0 ? defaultParams(findCodec(DEFAULT_FORMAT)?.params ?? []) : panel.params,
-        result: null,
-        metrics: null,
-        diff: null,
-        status: sourceId ? ('idle' as const) : ('empty' as const),
-        revision: panel.revision + 1,
-      }));
-      this.store.set({ mode, panels });
-    } else {
-      // Same settings for everyone; the frames are what differ.
-      const first = state.panels[0];
-      const formatId = first && first.formatId !== REFERENCE_FORMAT ? first.formatId : DEFAULT_FORMAT;
-      const params =
-        first && first.formatId === formatId ? first.params : defaultParams(findCodec(formatId)?.params ?? []);
-      const panels = state.panels.map((panel) => ({
-        ...panel,
-        formatId,
-        params,
-        result: null,
-        metrics: null,
-        diff: null,
-        status: panel.sourceId ? ('idle' as const) : ('empty' as const),
-        revision: panel.revision + 1,
-      }));
-      this.store.set({ mode, panels });
-      this.#notify('info', 'Режим «Фото»: перетащите второй снимок в правую панель — настройки кодирования общие.');
-    }
-
-    this.#measure();
-    this.#pipeline.scheduleAll('final');
+  #applyDocumentLocale(): void {
+    document.documentElement.lang = this.store.state.locale;
+    document.title = t('app.title');
+    const description = document.querySelector('meta[name="description"]');
+    if (description) description.setAttribute('content', t('app.description'));
   }
 
   setFormat(index: number, formatId: string): void {
     const codec = findCodec(formatId);
     if (!codec) return;
-    const state = this.store.state;
-    const params = defaultParams(codec.params);
-
-    if (state.mode === 'photo') {
-      // Photo mode compares frames, so encoding settings are global.
-      this.store.set({
-        panels: state.panels.map((panel) => ({
-          ...panel,
-          formatId,
-          params,
-          result: null,
-          metrics: null,
-          diff: null,
-          revision: panel.revision + 1,
-        })),
-      });
-      this.#pipeline.scheduleAll('final');
-      return;
-    }
-
     this.store.set({
-      panels: updatePanel(state, index, (panel) => ({
+      panels: updatePanel(this.store.state, index, (panel) => ({
         formatId,
-        params,
+        params: defaultParams(codec.params),
         result: null,
         metrics: null,
         diff: null,
@@ -479,21 +472,25 @@ export class App {
     const codec = findCodec(panel.formatId);
     if (!codec) return;
 
-    const apply = (p: typeof panel) => normaliseParams(codec.params, { ...p.params, [key]: value });
-
-    if (state.mode === 'photo') {
-      this.store.set({ panels: state.panels.map((p) => ({ ...p, params: apply(p) })) });
-      this.#pipeline.scheduleAll(mode);
-      return;
-    }
-
-    this.store.set({ panels: updatePanel(state, index, (p) => ({ params: apply(p) })) });
+    this.store.set({
+      panels: updatePanel(state, index, (p) => ({
+        params: normaliseParams(codec.params, { ...p.params, [key]: value }),
+      })),
+    });
     this.#pipeline.schedule(index, mode);
   }
 
-  #notify(kind: 'info' | 'warn' | 'error', text: string): void {
+  #notify(kind: 'info' | 'warn' | 'error', key: string, vars?: Readonly<Record<string, string | number>>): void {
     this.store.set((s) => {
-      if (s.notices.some((n) => n.text === text)) return {};
+      if (s.notices.some((n) => n.key === key)) return {};
+      return { notices: [...s.notices, notice(kind, key, vars)] };
+    });
+  }
+
+  /** For messages that are already text — codec failures and the like. */
+  #notifyRaw(kind: 'info' | 'warn' | 'error', text: string): void {
+    this.store.set((s) => {
+      if (s.notices.some((n) => n.key === text)) return {};
       return { notices: [...s.notices, notice(kind, text)] };
     });
   }
@@ -537,9 +534,11 @@ export class App {
     this.#toolbar.update(state, this.viewport);
     this.#notices.update(state.notices);
     this.#layout.update(state);
+    this.#layout.setSplits(state.splits);
     this.#empty.setVisible(state.sources.length === 0 && state.loading === null);
     toggleClass(this.#loading, 'is-visible', state.loading !== null);
-    this.#loadingText.textContent = state.loading ? `Декодирую ${state.loading}…` : '';
+    this.#loadingText.textContent = state.loading ? t('loading.decoding', { name: state.loading }) : '';
+    this.#statusHint.textContent = t('app.hint');
     toggleClass(this.root, 'is-loading', state.loading !== null);
     toggleClass(this.root, 'is-flipping', state.flip);
 

@@ -11,11 +11,11 @@ import { type CodecAdapter, throwIfAborted } from './types.ts';
  */
 export const adapter: CodecAdapter = {
   id: 'original',
-  label: 'Оригинал',
+  label: 'codec.original.label',
   mime: 'application/octet-stream',
   extension: 'bin',
   lossless: true,
-  note: 'Исходный файл без перекодирования',
+  note: 'codec.original.note',
   params: [],
 
   async encode(image, _params, signal) {

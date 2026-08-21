@@ -30,7 +30,7 @@ async function waitForFullResult(page: Page, panel: number): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', (error) => {
-    throw new Error(`Ошибка на странице: ${error.message}`);
+    throw new Error(`Page error: ${error.message}`);
   });
   await page.goto('/');
 });
@@ -39,14 +39,14 @@ test('the build under test is the one that was just deployed', async ({ page }) 
   // Only meaningful against a real deployment: it catches a smoke test that
   // passed against the previous build because the new one had not propagated.
   const expected = process.env.EXPECTED_SHA;
-  test.skip(!expected, 'EXPECTED_SHA не задан — проверять нечего');
+  test.skip(!expected, 'EXPECTED_SHA is not set — nothing to compare against');
   await expect(page.locator('.build-info')).toContainText(expected!.slice(0, 7));
 });
 
 test('the page is cross-origin isolated', async ({ page }) => {
   await expect(page.locator('.brand-name')).toHaveText('Pixel Peep');
   const isolated = await page.evaluate(() => self.crossOriginIsolated);
-  expect(isolated, 'COOP/COEP не доехали: кодирование будет в разы медленнее').toBe(true);
+  expect(isolated, 'COOP/COEP did not arrive: encoding will be several times slower').toBe(true);
 });
 
 test('a fixture image loads and both panels appear', async ({ page }) => {
@@ -97,7 +97,7 @@ test('webp and jxl encode to a real file with real metrics', async ({ page }) =>
     await expect(panel.locator('[data-metric="ratio"]')).toHaveText(/%/, { timeout: 120_000 });
 
     const psnr = await panel.locator('[data-metric="psnr"]').innerText();
-    expect(psnr, `${format}: PSNR не посчитан`).toMatch(/[\d∞]/);
+    expect(psnr, `${format}: PSNR was not computed`).toMatch(/[\d∞]/);
   }
 });
 

@@ -3,9 +3,9 @@ import { type ParamValue, defaultParams } from '../codecs/types.ts';
 import type { AlignMode, Axis, SyncMode } from '../core/geometry.ts';
 import type { ImageSource } from '../core/image-source.ts';
 import type { Metrics } from '../core/metrics.ts';
+import { type Locale, getLocale } from '../i18n/index.ts';
 import { Store } from '../core/store.ts';
 
-export type Mode = 'codec' | 'photo';
 export type PanelStatus = 'empty' | 'idle' | 'encoding' | 'ready' | 'error';
 export type ResultQuality = 'proxy' | 'full';
 
@@ -37,14 +37,16 @@ export interface PanelState {
   readonly revision: number;
 }
 
+/** Messages are stored as a key plus values, so they follow a locale switch. */
 export interface Notice {
   readonly id: number;
   readonly kind: 'info' | 'warn' | 'error';
-  readonly text: string;
+  readonly key: string;
+  readonly vars?: Readonly<Record<string, string | number>>;
 }
 
 export interface AppState {
-  readonly mode: Mode;
+  readonly locale: Locale;
   readonly sources: readonly ImageSource[];
   readonly panels: readonly PanelState[];
   /** Panel whose controls are on screen on narrow layouts. */
@@ -66,7 +68,6 @@ export interface AppState {
   readonly crossOriginIsolated: boolean;
   /** Encoding at proxy resolution because the source is very large. */
   readonly proxyOnly: boolean;
-  readonly zoomLabel: string;
 }
 
 /** v1 ships two panels, but nothing below assumes the number two. */
@@ -94,7 +95,7 @@ export function makePanel(sourceId: string, formatId: string): PanelState {
 export function initialState(devMode: boolean): AppState {
   const panels = [makePanel('', REFERENCE_FORMAT), makePanel('', DEFAULT_FORMAT)];
   return {
-    mode: 'codec',
+    locale: getLocale(),
     sources: [],
     panels,
     activePanel: 1,
@@ -112,7 +113,6 @@ export function initialState(devMode: boolean): AppState {
     notices: [],
     crossOriginIsolated: typeof globalThis.crossOriginIsolated === 'boolean' ? globalThis.crossOriginIsolated : false,
     proxyOnly: false,
-    zoomLabel: 'вписать',
   };
 }
 
@@ -122,20 +122,29 @@ export function createStore(devMode: boolean): AppStore {
   return new Store<AppState>(initialState(devMode));
 }
 
-export function notice(kind: Notice['kind'], text: string): Notice {
+export function notice(
+  kind: Notice['kind'],
+  key: string,
+  vars?: Readonly<Record<string, string | number>>,
+): Notice {
   noticeSeq += 1;
-  return { id: noticeSeq, kind, text };
-}
-
-/** Source a panel compares against: shared in codec mode, its own in photo mode. */
-export function referenceSourceFor(state: AppState, panelIndex: number): ImageSource | undefined {
-  const panel = state.panels[panelIndex];
-  if (!panel) return undefined;
-  return state.sources.find((s) => s.id === panel.sourceId);
+  return { id: noticeSeq, kind, key, vars };
 }
 
 export function panelSource(state: AppState, panel: PanelState): ImageSource | undefined {
   return state.sources.find((s) => s.id === panel.sourceId);
+}
+
+/**
+ * True when the panels hold frames of different pixel dimensions. Alignment
+ * only means anything then, so the control is hidden the rest of the time.
+ */
+export function sourcesDiffer(state: AppState): boolean {
+  const sizes = state.panels
+    .map((panel) => panelSource(state, panel))
+    .filter((source): source is ImageSource => !!source)
+    .map((source) => `${source.width}x${source.height}`);
+  return new Set(sizes).size > 1;
 }
 
 export function updatePanel(

@@ -83,9 +83,13 @@ describe('clamping', () => {
     expect(clampCentre(0.5, 0.4)).toBeCloseTo(0.5, 12);
   });
 
-  it('centres when the image already fits on that axis', () => {
-    expect(clampCentre(0.1, 1)).toBe(0.5);
-    expect(clampCentre(0.9, 2.5)).toBe(0.5);
+  it('lets an image that already fits be moved, but not off screen', () => {
+    // Pinning it to 0.5 made a small frame impossible to nudge, and in
+    // "continue" mode it then never reached the next panel.
+    expect(clampCentre(0.1, 1)).toBe(0.1);
+    expect(clampCentre(0.9, 2.5)).toBe(0.9);
+    expect(clampCentre(-4, 2.5)).toBe(0);
+    expect(clampCentre(9, 2.5)).toBe(1);
   });
 
   it('never lets the visible window leave the image while panning', () => {
@@ -280,5 +284,30 @@ describe('splitStage', () => {
     const rects = splitStage({ width: 1200, height: 400 }, 4, 'x', [0.25, 0.25, 0.25, 0.25]);
     expect(rects).toHaveLength(4);
     expect(rects.at(-1)!.x + rects.at(-1)!.width).toBeCloseTo(1200, 9);
+  });
+});
+
+describe('the splitter in continuous mode', () => {
+  const boxes = [
+    { image: { width: 1000, height: 1000 }, panel: { width: 500, height: 500 } },
+    { image: { width: 1000, height: 1000 }, panel: { width: 500, height: 500 } },
+  ];
+  const view = { z: 1, u: 0.5, v: 0.5 };
+
+  it('skips the image hidden behind the divider', () => {
+    const seamless = layoutGeometry(boxes, view, { sync: 'continuous', align: 'contain', axis: 'x' });
+    const withGap = layoutGeometry(boxes, view, { sync: 'continuous', align: 'contain', axis: 'x', gap: 7 });
+    // 7 CSS px at 1:1 on a 1000 px wide image is 0.007 of its width.
+    expect(withGap[1]!.u - seamless[1]!.u).toBeCloseTo(0.007, 6);
+  });
+
+  it('leaves the leader alone', () => {
+    const withGap = layoutGeometry(boxes, view, { sync: 'continuous', align: 'contain', axis: 'x', gap: 7 });
+    expect(withGap[0]!.u).toBe(0.5);
+  });
+
+  it('does nothing in mirror mode', () => {
+    const withGap = layoutGeometry(boxes, view, { sync: 'mirror', align: 'contain', axis: 'x', gap: 7 });
+    expect(withGap[1]!.u).toBe(withGap[0]!.u);
   });
 });

@@ -2,6 +2,7 @@
 
 declare const __BUILD_SHA__: string;
 declare const __BUILD_DATE__: string;
+declare const __REPO_URL__: string;
 
 declare module 'libheif-js/libheif-wasm/libheif-bundle.mjs' {
   export interface HeifImage {

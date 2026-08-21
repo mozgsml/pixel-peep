@@ -16,7 +16,7 @@ export const adapter: CodecAdapter = {
     {
       kind: 'range',
       key: 'quality',
-      label: 'Качество',
+      label: 'param.quality',
       min: 0,
       max: 100,
       step: 1,
@@ -26,21 +26,21 @@ export const adapter: CodecAdapter = {
     {
       kind: 'toggle',
       key: 'lossless',
-      label: 'Без потерь',
+      label: 'param.lossless',
       default: false,
-      hint: 'Кодер работает без потерь, но wasm-декодер libjxl округляет через float: единицы отсчётов из тысяч могут отличаться на ±1, поэтому PSNR не покажет ∞',
+      hint: 'param.lossless.jxlHint',
     },
     {
       kind: 'range',
       key: 'effort',
-      label: 'Усилие',
+      label: 'param.effort',
       min: 1,
       max: 9,
       step: 1,
       default: 7,
-      hint: 'libjxl effort: 1 — мгновенно и рыхло, 9 — долго и плотно',
+      hint: 'param.effort.jxlHint',
     },
-    { kind: 'toggle', key: 'progressive', label: 'Прогрессивный', default: false },
+    { kind: 'toggle', key: 'progressive', label: 'param.progressive', default: false },
   ],
 
   async encode(image, params, signal) {

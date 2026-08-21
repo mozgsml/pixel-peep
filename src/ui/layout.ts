@@ -1,4 +1,5 @@
 import type { Axis } from '../core/geometry.ts';
+import { t } from '../i18n/index.ts';
 import type { AppState } from '../app/state.ts';
 import { el, toggleClass } from './dom.ts';
 import type { PanelView } from './panel.ts';
@@ -12,7 +13,11 @@ import type { PanelView } from './panel.ts';
 
 const COMPACT_QUERY = '(max-width: 820px)';
 const PORTRAIT_QUERY = '(orientation: portrait)';
-const SPLITTER_SIZE = 7;
+/** Also fed to the viewport so `continuous` can skip the image behind it. */
+export const SPLITTER_SIZE = 7;
+
+/** Smallest share a panel can be squeezed to. */
+const MIN_SHARE = 0.08;
 
 export interface LayoutHost {
   onSplits(splits: number[]): void;
@@ -91,6 +96,7 @@ export class Layout {
   }
 
   setSplits(splits: readonly number[]): void {
+    if (splits.length === this.#splits.length && splits.every((v, i) => v === this.#splits[i])) return;
     this.#splits = [...splits];
     this.#applyGrid();
   }
@@ -107,7 +113,9 @@ export class Layout {
           role: 'tab',
           'aria-selected': String(state.activePanel === index),
         },
-        `${String.fromCharCode(65 + index)} · ${panel.formatId === 'original' ? 'оригинал' : panel.formatId.toUpperCase()}`,
+        `${String.fromCharCode(65 + index)} · ${
+          panel.formatId === 'original' ? t('codec.original.label') : panel.formatId.toUpperCase()
+        }`,
       );
       tab.addEventListener('click', () => this.#host.onActivePanel(index));
       this.#sheetTabs.appendChild(tab);
@@ -162,7 +170,8 @@ export class Layout {
       class: 'splitter',
       role: 'separator',
       tabindex: '0',
-      'aria-label': 'Граница панелей',
+      'aria-label': t('layout.splitter'),
+      title: t('layout.splitterHint'),
     });
 
     const commit = (fractions: number[]) => {
@@ -176,15 +185,22 @@ export class Layout {
       event.preventDefault();
       splitter.setPointerCapture(event.pointerId);
       const rect = this.root.getBoundingClientRect();
-      const total = this.#axis === 'x' ? rect.width : rect.height;
+      // The splitters are fixed pixels, so only what is left is shared out by
+      // the fractions. Measuring the delta against the full stage made the
+      // handle drift away from the pointer.
+      const gaps = (this.#panels.length - 1) * SPLITTER_SIZE;
+      const total = Math.max(1, (this.#axis === 'x' ? rect.width : rect.height) - gaps);
       const pairTotal = (this.#splits[edge] ?? 0) + (this.#splits[edge + 1] ?? 0);
       const start = this.#axis === 'x' ? event.clientX - rect.left : event.clientY - rect.top;
+      // Captured once: reading it back from `#splits` inside `move` accumulated
+      // the delta on every event, which is why the divider ran away.
+      const startFraction = this.#splits[edge] ?? 0;
 
       const move = (e: PointerEvent) => {
         const current = this.#axis === 'x' ? e.clientX - rect.left : e.clientY - rect.top;
-        const delta = (current - start) / Math.max(1, total);
+        const delta = (current - start) / total;
         const next = [...this.#splits];
-        const first = Math.min(pairTotal - 0.08, Math.max(0.08, (this.#splits[edge] ?? 0) + delta));
+        const first = Math.min(pairTotal - MIN_SHARE, Math.max(MIN_SHARE, startFraction + delta));
         next[edge] = first;
         next[edge + 1] = pairTotal - first;
         commit(next);
@@ -214,7 +230,7 @@ export class Layout {
       event.preventDefault();
       const pairTotal = (this.#splits[edge] ?? 0) + (this.#splits[edge + 1] ?? 0);
       const next = [...this.#splits];
-      const first = Math.min(pairTotal - 0.08, Math.max(0.08, (this.#splits[edge] ?? 0) + delta));
+      const first = Math.min(pairTotal - MIN_SHARE, Math.max(MIN_SHARE, (this.#splits[edge] ?? 0) + delta));
       next[edge] = first;
       next[edge + 1] = pairTotal - first;
       commit(next);

@@ -1,10 +1,11 @@
 import type { Notice } from '../app/state.ts';
-import { el } from './dom.ts';
+import { t } from '../i18n/index.ts';
+import { el, setText } from './dom.ts';
 
 /** Non-blocking messages. No modals: they hide the thing being compared. */
 export class NoticeBar {
   readonly root = el('div', { class: 'notices', role: 'status', 'aria-live': 'polite' });
-  #rendered = new Map<number, HTMLElement>();
+  #rendered = new Map<number, { node: HTMLElement; text: HTMLElement; close: HTMLElement }>();
   #onDismiss: (id: number) => void;
 
   constructor(onDismiss: (id: number) => void) {
@@ -13,19 +14,27 @@ export class NoticeBar {
 
   update(notices: readonly Notice[]): void {
     const seen = new Set(notices.map((n) => n.id));
-    for (const [id, node] of this.#rendered) {
+    for (const [id, entry] of this.#rendered) {
       if (!seen.has(id)) {
-        node.remove();
+        entry.node.remove();
         this.#rendered.delete(id);
       }
     }
+
     for (const item of notices) {
-      if (this.#rendered.has(item.id)) continue;
-      const close = el('button', { type: 'button', class: 'notice-close', 'aria-label': 'Скрыть' }, '×');
-      close.addEventListener('click', () => this.#onDismiss(item.id));
-      const node = el('div', { class: `notice notice-${item.kind}` }, el('span', {}, item.text), close);
-      this.#rendered.set(item.id, node);
-      this.root.appendChild(node);
+      let entry = this.#rendered.get(item.id);
+      if (!entry) {
+        const close = el('button', { type: 'button', class: 'notice-close' }, '×');
+        close.addEventListener('click', () => this.#onDismiss(item.id));
+        const text = el('span', {});
+        const node = el('div', { class: `notice notice-${item.kind}` }, text, close);
+        entry = { node, text, close };
+        this.#rendered.set(item.id, entry);
+        this.root.appendChild(node);
+      }
+      // Re-resolved on every render so a locale switch reaches open notices.
+      setText(entry.text, t(item.key, item.vars));
+      entry.close.setAttribute('aria-label', t('notice.dismiss'));
     }
   }
 }

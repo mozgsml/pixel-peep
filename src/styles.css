@@ -458,6 +458,20 @@ input[type="range"]:disabled::-moz-range-thumb {
   background: #6a6a6a;
 }
 
+/* A 7 px bar is a fine visual seam and a poor target for a fingertip. On touch
+   the grab area is widened well past what is drawn, without moving the seam. */
+@media (pointer: coarse) {
+  .splitter::before {
+    content: "";
+    position: absolute;
+    inset: 0 -12px;
+  }
+
+  .splitter.is-vertical::before {
+    inset: -12px 0;
+  }
+}
+
 /* ----------------------------------------------------------------- panel */
 
 .panel {
@@ -1073,7 +1087,18 @@ body.is-compact .topbar-centre {
 }
 
 body.is-compact .topbar-right {
-  gap: 8px;
+  gap: 8px 10px;
+  /* The nested row does not inherit the top bar's wrapping, so on a phone it
+     ran past the right edge and took the language switch with it — the one
+     control a reader of the wrong language has to be able to reach. */
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  margin-left: 0;
+}
+
+body.is-compact .topbar-left {
+  flex-wrap: wrap;
+  gap: 8px 10px;
 }
 
 body.is-compact .toolbar-label {
@@ -1120,4 +1145,71 @@ body.is-compact .icon-button {
     --line: #4a4a4a;
     --line-strong: #666666;
   }
+}
+
+/* ------------------------------------------- panel chrome added in v0.2 */
+
+/* The note takes the slack so everything after it sits against the right
+   edge; the badge keeps its own auto margin for the compact layout. */
+.panel-note {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.panel-head-actions,
+.panel-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.panel-actions .details-toggle,
+.panel-head-actions .panel-badge {
+  margin-left: 0;
+}
+
+/* Encoding indicator for a panel that already shows a result: without it a
+   dragged slider changes nothing on screen until the new encode lands. */
+.panel-busy {
+  display: none;
+  align-items: center;
+}
+
+.panel-busy.is-visible {
+  display: inline-flex;
+}
+
+.spinner-small {
+  width: 11px;
+  height: 11px;
+  border-width: 1.5px;
+}
+
+.panel-load,
+.panel-download {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.panel-download.is-hidden {
+  display: none;
+}
+
+.panel-download:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.github-link:hover {
+  color: var(--text);
 }
