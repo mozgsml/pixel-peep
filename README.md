@@ -11,7 +11,7 @@ differently, the zoom is synchronised and exact, and holding the space bar flips
 Nothing is uploaded. The files never leave the browser: every encode runs locally in a wasm worker,
 which also means it works offline and on photos you would not send to a stranger's server.
 
-![Two panels comparing the original against WebP, with size, ratio and PSNR under each](docs/screenshot.png)
+![Two panels at 1:1 showing the same lakeside sunset: the original on the left at 1.15 MB, WebP quality 42 on the right at 17 kB, with size, ratio and PSNR under each](docs/screenshot.png)
 
 ---
 
