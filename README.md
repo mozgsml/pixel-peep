@@ -1,314 +1,102 @@
 # Pixel Peep
 
-Инструмент, который отвечает на один вопрос: **до какого качества я готов сжать свои фотографии.**
+**https://pixel-peep.pages.dev**
 
-Ответ даётся глазами, а не цифрами. Две панели показывают один и тот же кадр в разных форматах,
-зум синхронный и точный, по пробелу работает flip-тест. Метрики — вспомогательные.
+A tool that answers one question: **how hard am I willing to compress my photos.**
 
-Бэкенда нет: файлы не покидают браузер, всё кодирование идёт в wasm-воркерах.
+Not "which codec wins" in general — that depends on the picture — but how far *this* photo can go
+before *you* can see it. So the answer is given by eye. Two panels show the same frame encoded
+differently, the zoom is synchronised and exact, and holding the space bar flips between them.
+
+Nothing is uploaded. The files never leave the browser: every encode runs locally in a wasm worker,
+which also means it works offline and on photos you would not send to a stranger's server.
+
+![Two panels comparing the original against WebP, with size, ratio and PSNR under each](docs/screenshot.png)
 
 ---
 
-## Быстрый старт
+## What it is good for
+
+**Choosing a quality setting you can live with.** Put the original in one panel and a candidate in
+the other, zoom to 1:1, and hold space. Flicker in one place on screen is something the eye catches
+incomparably better than a difference between two pictures side by side — this is the whole reason
+the tool exists, and it is worth trying before anything else here.
+
+**Comparing formats honestly.** WebP q80 against AVIF q50 at the same file size, on your photo
+rather than on a test corpus. Each panel shows what it costs: bytes, percentage of the original,
+PSNR, and SSIM and bits-per-pixel if you open the row.
+
+**Finding where a codec breaks.** Switch the view to **Difference** and the panel shows
+`|result − original|` with a gain slider — ringing around hard edges, blocking in smooth gradients,
+and chroma smeared by 4:2:0 all become obvious long before they are visible in the picture itself.
+
+**Comparing two shots.** Drop a different photo onto each panel and encode both the same way, to see
+which frame survives compression better.
+
+**Checking what your phone did.** HEIC files from an iPhone open directly, with their orientation
+handled correctly.
+
+## Formats
+
+Encoding: **JPEG** (mozjpeg), **WebP** (libwebp), **AVIF** (libavif), **JPEG XL** (libjxl),
+**PNG** (oxipng) — with the original alongside them for reference.
+
+Opening: JPEG, PNG, WebP, GIF, BMP, AVIF, **HEIC/HEIF** and **JPEG XL**.
+
+Any panel can save its encoded result, so once you have found a setting you like you can keep the
+file.
+
+## Using it
+
+| | |
+|---|---|
+| **space** (hold) | flip test — every panel shows the first one's content |
+| wheel / pinch | zoom, anchored under the cursor, synchronised across panels |
+| drag | pan |
+| double click | fit ↔ 1:1 |
+| `0` / `1` | fit / actual pixels |
+| `+` `−`, arrows | zoom and pan in steps |
+
+**Open…** loads one photo into every panel. To compare two different photos, drop one onto a panel
+or use that panel's own **Load…**.
+
+**Mirror / Continue** decides whether the panels show the same fragment twice or continue one
+another, which is useful for following a single edge across both.
+
+When the panels hold frames of different sizes, an **Alignment** control appears — fit, by width, or
+by height. At 1:1 it steps aside: both panels are then strictly one image pixel per display pixel,
+which is the point of that position.
+
+The interface is available in English and Russian.
+
+## A word about the numbers
+
+PSNR and SSIM are shown because they are cheap and occasionally informative, not because they
+decide. PSNR correlates poorly with perception: a frame nudged slightly in brightness scores badly
+while a smeared one scores well. Treat them as a hint and trust the flip test.
+
+PNG is in the format list as a control rather than a competitor — being lossless, its PSNR must read
+`∞`. If it ever does not, the tool is broken, not the codec.
+
+---
+
+## Running it locally
 
 ```bash
 npm ci
-npm run dev        # http://localhost:5173, заголовки изоляции уже настроены
-npm test           # юнит-тесты и round-trip кодеков
-npm run build      # → dist/, статика для любого хостинга
-npm run preview    # проверить прод-сборку локально
-npm run test:e2e   # smoke-тест в реальном Chrome по прод-сборке
+npm run dev
 ```
 
-Нужен Node 20.19+ или 22+ (см. `.nvmrc`). E2E использует уже установленный в системе Chrome
-(`channel: 'chrome'`), отдельная загрузка браузера не нужна.
+Node 20.19+ or 22+. That is all — there is no backend, no configuration and no API key.
 
----
+## Contributing
 
-## Управление
+- [Architecture](docs/architecture.md) — how it is put together, the geometry, memory constraints
+- [Adding a codec](docs/codecs.md) — one file and one line in the registry
+- [Translations](docs/i18n.md) — copy one file, translate the strings; partial ones are welcome
+- [Testing](docs/testing.md) — what runs, and what the tests do not catch
+- [Deployment](docs/deploy.md) — headers, hosting, CI/CD
 
-| Действие | Результат |
-|---|---|
-| колесо / пинч | зум с якорем под курсором, синхронно во всех панелях |
-| перетаскивание | панорама согласно режиму синхронизации |
-| двойной клик | переключение «вписать» ↔ 1:1 |
-| **пробел (удержание)** | flip-тест: во всех панелях показывается содержимое первой |
-| `+` `−` | зум шагами |
-| стрелки | панорама шагами (с Shift — крупными) |
-| `0` / `1` | вписать / 100% |
-| двойной клик по сплиттеру | сброс раскладки 50/50 |
-
-Flip-тест — главная функция для оценки глазами: мерцание в одном и том же месте экрана глаз
-ловит несравнимо лучше, чем разницу двух картинок рядом.
-
-### Режимы
-
-- **Кодек** — один источник на обе панели, у каждой свои формат и параметры.
-  «WebP q80 или AVIF q50?»
-- **Фото** — у каждой панели свой кадр, настройки кодирования общие.
-  «Какой из двух дублей лучше переживёт сжатие?» Второй кадр перетаскивается прямо в панель.
-
-### Что показывается
-
-- **Результат** — декодированный результат кодирования (а не оригинал: иначе сравнивать нечего).
-- **Разница** — `|результат − оригинал|` с ползунком усиления. Усиление применяется фильтром при
-  отрисовке, поэтому ползунок отзывается мгновенно и ничего не пересчитывается.
-
----
-
-## Форматы
-
-Кодирование: `original` (псевдоформат), JPEG (mozjpeg), WebP (libwebp), AVIF (libavif),
-JPEG XL (libjxl), PNG (oxipng).
-
-Декодирование входных файлов: JPEG, PNG, WebP, GIF, BMP, AVIF — браузером;
-HEIC/HEIF (снимки с айфона) и JPEG XL — через wasm. EXIF-ориентация применяется ко всем форматам
-одинаково, своим кодом, а не доверяется браузеру.
-
-**PNG включён не как конкурент, а как контроль:** на нём PSNR обязан быть `∞`. Если это не так —
-сломан пайплайн, а не кодек. Это же проверяется юнит-тестом и smoke-тестом после деплоя.
-
-### Добавить формат
-
-Ровно четыре шага, ни один файл вне `src/codecs/` при этом не меняется:
-
-1. `npm i <пакет-кодека>`;
-2. создать `src/codecs/<id>.ts`, реализующий `CodecAdapter`;
-3. добавить одну строку в `src/codecs/registry.ts`;
-4. round-trip тест подхватится сам — он параметризован по реестру.
-
-Контролы в тулбаре, пункт в выпадающем списке, ленивая загрузка wasm, кэширование, метрики и
-работа воркера берутся из декларации `ParamSchema`. Проверить это можно на фиктивном кодеке
-`debug-blur`: он виден в режиме разработки (`npm run dev` или `?dev` в адресе) и существует ровно
-для того, чтобы доказать, что схема работает.
-
----
-
-## Архитектура
-
-```
-src/
-  core/        # чистые функции без DOM: geometry, viewport, metrics, cache, store, exif
-  codecs/      # реестр и адаптеры; wasm за динамическим import()
-  workers/     # пул воркеров с отменой устаревших задач + протокол сообщений
-  render/      # мип-пирамиды, многопроходный даунсемпл, отрисовка панели
-  io/          # декодирование файлов, фолбэк cross-origin isolation
-  ui/          # раскладка, панель, генерация контролов, тулбар
-  app/         # состояние, пайплайн кодирования, склейка
-```
-
-Ключевые решения:
-
-- **Геометрия отделена от всего.** `core/geometry.ts` — чистая математика, покрытая тестами
-  плотнее остального кода. Зум геометрический (`scale = fit^(1−z)`), позиция хранится в
-  нормированных координатах — синхронизация разноразмерных кадров получается бесплатно.
-- **`ImageData` кладётся в offscreen-канвас один раз**, каждый кадр рисуется через `drawImage`.
-  При `scale ≥ 1` интерполяция выключена — смотрим настоящие пиксели. Ниже 1:1 работает
-  мип-пирамида, чтобы последний шаг никогда не уменьшал больше чем вдвое: однопроходный
-  браузерный ресайз даёт алиасинг, и сравнивать вы будете артефакты масштабирования, а не кодеки.
-- **Кэш и бюджеты считаются в пикселях, а не в записях.** Фото 24 Мп — это 96 МБ в виде
-  `ImageData`, и именно память, а не количество записей, роняет мобильный Safari.
-- **Прокси-предпросмотр.** Во время перетаскивания ползунка кодируется уменьшенная копия
-  (≤ 4 Мп, debounce 200 мс), затем ставится в очередь полный размер. Результат на прокси помечен
-  значком «предпросмотр», размер показан с `≈`, а «% от оригинала» не показывается вовсе:
-  сравнивать байты прокси с байтами исходника было бы враньём.
-- **Отмена устаревших задач.** Новая задача для панели прерывает её предыдущую. Вызов wasm
-  прервать посреди нельзя, поэтому вызывающая сторона отпускается сразу, а результат
-  отбрасывается — очередь мёртвых кодирований не копится.
-
----
-
-## Деплой
-
-Приложение полностью статическое: `dist/` кладётся на любой статический хостинг. Единственное
-требование — **возможность задавать HTTP-заголовки**:
-
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
-```
-
-Без них не работают wasm-треды и SIMD, и AVIF с JPEG XL становятся в разы медленнее. Поломка
-молчаливая: внешне всё работает. Проверка после деплоя — в консоли
-`self.crossOriginIsolated === true`; при `false` приложение показывает предупреждение само.
-
-### Cloudflare Pages (целевая площадка)
-
-Файл `public/_headers` попадает в корень `dist/` при сборке:
-
-```
-/*
-  Cross-Origin-Opener-Policy: same-origin
-  Cross-Origin-Embedder-Policy: require-corp
-
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
-```
-
-Вторая секция важна: wasm-бинарники кодеков весят десятки мегабайт, и без долгого кэша каждый
-заход будет их перекачивать. Vite проставляет хеши в имена файлов, поэтому `immutable` безопасен.
-
-Встроенную Git-интеграцию Pages не подключаем — деплой идёт из GitHub Actions
-(`wrangler pages deploy`), чтобы после выкладки можно было прогнать smoke-тест.
-
-### Netlify
-
-Тот же `_headers`, ничего дополнительно.
-
-### Vercel — `vercel.json`
-
-```json
-{
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
-        { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
-      ]
-    },
-    {
-      "source": "/assets/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
-    }
-  ]
-}
-```
-
-### Firebase Hosting — `firebase.json`
-
-```json
-{
-  "hosting": {
-    "public": "dist",
-    "headers": [
-      {
-        "source": "**",
-        "headers": [
-          { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
-          { "key": "Cross-Origin-Embedder-Policy", "value": "require-corp" }
-        ]
-      },
-      {
-        "source": "/assets/**",
-        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
-      }
-    ]
-  }
-}
-```
-
-### GitHub Pages
-
-Произвольные заголовки там не задаются, поэтому включён фолбэк: `public/coi-serviceworker.js`
-подставляет COOP/COEP на клиенте. Он регистрируется автоматически и **только** если сервер
-заголовки не прислал (`src/io/coi.ts`), и делает ровно одну перезагрузку. Учтите, что COEP
-ломает загрузку любых сторонних ресурсов без CORS — здесь их нет, но если вы что-то добавите,
-это сломается.
-
-### Секреты
-
-- `CLOUDFLARE_API_TOKEN` — токен **только** с правом «Cloudflare Pages: Edit», не глобальный ключ;
-- `CLOUDFLARE_ACCOUNT_ID` — виден в адресной строке дашборда
-  (`https://dash.cloudflare.com/<ACCOUNT_ID>/…`) и в блоке «Account details» справа.
-
-Оба — в GitHub Secrets, в Environment `production`, привязанном к `deploy.yml`:
-
-```bash
-gh secret set CLOUDFLARE_API_TOKEN  --env production --repo <owner>/<repo>
-gh secret set CLOUDFLARE_ACCOUNT_ID --env production --repo <owner>/<repo>
-```
-
-Имя проекта Pages задаётся переменной `CLOUDFLARE_PROJECT_NAME` (по умолчанию `pixel-peep`).
-
-### Создание проекта Pages
-
-Руками ничего делать не нужно: `deploy.yml` заводит проект сам, если его ещё нет. Это не
-удобство, а необходимость — в новом дашборде Cloudflare раздел «Pages → Direct Upload» из
-интерфейса убран, и остались только Workers-сценарии. API и `wrangler` при этом работают
-по-прежнему. Если хочется создать проект заранее, локально:
-
-```bash
-export CLOUDFLARE_API_TOKEN='...'
-export CLOUDFLARE_ACCOUNT_ID='...'
-npx wrangler pages project create pixel-peep --production-branch=main
-```
-
-### Ручной откат
-
-```bash
-# список деплоев, самый свежий сверху
-npx wrangler pages deployment list --project-name=pixel-peep --environment=production
-
-# откатиться на конкретный
-curl -X POST \
-  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/pixel-peep/deployments/<DEPLOYMENT_ID>/rollback" \
-  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
-```
-
-Через API, а не через `wrangler`: команды `pages deployment rollback` у `wrangler` нет —
-ни в 3, ни в 4. Автоматический откат в `deploy.yml` дёргает тот же эндпоинт.
-
----
-
-## CI/CD
-
-Прод обновляется при попадании изменений в `main`; влитие PR — это и есть акт выкладки.
-Прямые пуши в `main` закрываются branch protection, работа ведётся в `feature/*`.
-
-| Воркфлоу | Когда | Что делает |
-|---|---|---|
-| `ci.yml` | push в не-`main`, pull request | typecheck → тесты → сборка |
-| `preview.yml` | pull request | то же + деплой превью и комментарий со ссылкой в PR |
-| `deploy.yml` | push в `main`, ручной запуск | проверки → сборка → деплой → smoke-тест → откат при падении |
-
-Версия сборки прокидывается через `define` в `vite.config.ts` (`__BUILD_SHA__`, `__BUILD_DATE__`),
-видна мелким шрифтом в углу интерфейса и печатается в консоль при старте — без этого невозможно
-понять, какую сборку видел человек, приславший баг.
-
----
-
-## Тесты
-
-- **Юнит** (`npm test`) — вся геометрия (главный приоритет), метрики на синтетике с известным
-  PSNR, LRU-кэш, стор, EXIF, определение форматов, пул воркеров.
-- **Round-trip кодеков** — параметризован по реестру: корректные размеры после
-  `encode → decode`, побитовое совпадение для lossless-режимов, реальная отработка `AbortSignal`,
-  детерминированность (без неё нельзя кэшировать).
-- **E2E** (`npm run test:e2e`) — реальный Chrome по прод-сборке: изоляция, загрузка файла,
-  `PSNR = ∞` на PNG, кодирование в WebP и JXL, отсутствие роста heap на 50 переключениях формата.
-
-Известное отклонение: **JPEG XL в режиме «без потерь» не побитовый** — не по вине кодера.
-wasm-сборка декодера libjxl конвертирует через float и округляет, из-за чего единицы отсчётов из
-тысяч отличаются на ±1 и PSNR не показывает `∞`. Зафиксировано явным допуском в
-`tests/codecs.test.ts` и оговорено в подсказке к переключателю, а не спрятано.
-
----
-
-## Открытые вопросы
-
-Реализованы разумные варианты; решения продуктовые и могут поменяться.
-
-1. **Кадры с сильно разными пропорциями в режиме «Фото».** Выравнивание по ширине оставляет
-   большие пустые поля. Сейчас по умолчанию «Вписать», а «Ширина» и «Высота» доступны вручную;
-   при `z = 1` выравнивание игнорируется и обе панели строго 1:1. `TODO` — возможно, стоит
-   выбирать режим автоматически по соотношению пропорций.
-2. **Зум глубже 1:1.** Разрешён: `z` доходит до 3, что даёт примерно 8× для типичного кадра —
-   без этого разглядывать звон вокруг контуров неудобно. Обратный ход тоже разрешён (`z` до
-   −0.35), чтобы кадр можно было отодвинуть от края панели.
-3. **Панель `original`, когда исходник — уже сжатый JPEG.** Он тоже с артефактами, и метрики
-   против него измеряют расстояние до уже испорченного эталона, а не до реальности. Сейчас у
-   панели-эталона метрики просто скрыты, а формат подписан «Исходный файл без перекодирования».
-   `TODO` — показывать предупреждение, когда исходник пришёл в lossy-формате.
-
----
-
-## Чего инструмент не делает
-
-Редактор изображений (никаких кроп/поворот/коррекций), серверную обработку, HDR и цвета глубже
-8 бит. Пакетная сетка «формат × качество», больше двух панелей, режим «шторка», сохранение
-сжатого файла и ссылка с настройками — отложены.
-
-## Лицензия
+## License
 
 MIT.
