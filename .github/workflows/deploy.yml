@@ -73,22 +73,26 @@ jobs:
               JSON.stringify(access.errors));
 
             const list = require("./accounts.json");
-            if (list.success && Array.isArray(list.result)) {
-              const ids = list.result.map((a) => a.id);
+            const ids = list.success && Array.isArray(list.result) ? list.result.map((a) => a.id) : null;
+
+            if (ids && ids.length > 0) {
               console.error("Токену видны аккаунты: " + ids.map(mask).join(", "));
-              if (!ids.includes(wanted)) {
-                console.error("→ CLOUDFLARE_ACCOUNT_ID не совпадает ни с одним из них.");
-                console.error("  Скорее всего в секрете Zone ID, а не Account ID. Account ID —");
-                console.error("  32 символа сразу после dash.cloudflare.com/ в адресной строке.");
-              } else {
-                console.error("→ Аккаунт верный, значит не хватает права.");
-                console.error("  My Profile → API Tokens → ваш токен → Edit:");
-                console.error("  нужна строка Account · Cloudflare Pages · Edit (именно Edit, не Read).");
-              }
+              console.error(ids.includes(wanted)
+                ? "→ Аккаунт верный, значит не хватает права: нужна строка\n" +
+                  "  Account · Cloudflare Pages · Edit (именно Edit, не Read)."
+                : "→ CLOUDFLARE_ACCOUNT_ID не совпадает ни с одним из них — в секрете\n" +
+                  "  не тот идентификатор. Account ID это 32 символа сразу после\n" +
+                  "  dash.cloudflare.com/ в адресной строке.");
             } else {
-              console.error("Список аккаунтов этим токеном тоже не читается.");
-              console.error("Проверьте в токене: Account · Cloudflare Pages · Edit,");
-              console.error("и что в Account Resources выбран нужный аккаунт (а не «All accounts» из другого профиля).");
+              // An empty list is not proof of a wrong id: a Pages-scoped token
+              // may simply not be allowed to enumerate accounts. Both causes
+              // stay on the table rather than guessing one.
+              console.error("Список аккаунтов этим токеном пуст — он не говорит, какая из причин верна.");
+              console.error("Проверьте обе, в My Profile → API Tokens → ваш токен → Edit:");
+              console.error("  1. Permissions: Account · Cloudflare Pages · Edit (именно Edit, не Read);");
+              console.error("  2. Account Resources: Include · нужный аккаунт (не пусто и не чужой);");
+              console.error("  3. что в секрете Account ID (" + mask(wanted) + "), а не Zone ID —");
+              console.error("     Account ID стоит сразу после dash.cloudflare.com/ в адресе.");
             }
             process.exit(1);
           '
