@@ -34,14 +34,33 @@ jobs:
       - run: npm test
       - run: npx vite build
 
+      - name: Create the Pages project if it does not exist
+        run: |
+          set -euo pipefail
+          # The dashboard no longer offers "Pages → Direct Upload", so the
+          # project is provisioned here instead of by hand.
+          exists=$(npx wrangler pages project list --json \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+                const list = JSON.parse(s || "[]");
+                console.log(list.some((p) => p.name === process.env.PROJECT) ? "yes" : "no");
+              })')
+          if [ "$exists" = "no" ]; then
+            npx wrangler pages project create "$PROJECT" --production-branch=main
+          fi
+
       - name: Remember the currently live deployment, for rollback
         id: previous
         run: |
           set -euo pipefail
-          id=$(npx wrangler@3 pages deployment list --project-name="$PROJECT" \
+          id=$(npx wrangler pages deployment list --project-name="$PROJECT" \
                  --environment=production --json 2>/dev/null \
                | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-                   try { const list = JSON.parse(s); console.log(list?.[0]?.id ?? ""); } catch { console.log(""); }
+                   try {
+                     const list = JSON.parse(s || "[]");
+                     const live = [...list].sort((a, b) =>
+                       new Date(b.created_on) - new Date(a.created_on))[0];
+                     console.log(live?.id ?? "");
+                   } catch { console.log(""); }
                  })' || true)
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
@@ -49,7 +68,7 @@ jobs:
         id: deploy
         run: |
           set -euo pipefail
-          npx wrangler@3 pages deploy dist \
+          npx wrangler pages deploy dist \
             --project-name="$PROJECT" \
             --branch=main \
             --commit-dirty=true | tee deploy.log
@@ -66,10 +85,15 @@ jobs:
       - name: Roll back on a failed smoke test
         if: failure() && steps.smoke.outcome == 'failure' && steps.previous.outputs.id != ''
         run: |
+          set -euo pipefail
           # A silent degradation — usually _headers missing from the publish
           # directory — is exactly what the smoke test exists to catch.
-          npx wrangler@3 pages deployment rollback "${{ steps.previous.outputs.id }}" \
-            --project-name="$PROJECT" --yes
+          # wrangler has no rollback command, so this goes straight to the API.
+          curl -sS -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT/deployments/${{ steps.previous.outputs.id }}/rollback" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H 'Content-Type: application/json' | tee rollback.json
+          node -e 'const r=require("./rollback.json"); if(!r.success){console.error(r.errors);process.exit(1)}'
           echo "::error::Smoke-тест не прошёл, откатились на ${{ steps.previous.outputs.id }}"
 
       - name: Upload the failure trace

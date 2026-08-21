@@ -37,7 +37,7 @@ jobs:
           PROJECT: ${{ vars.CLOUDFLARE_PROJECT_NAME || 'pixel-peep' }}
         run: |
           set -euo pipefail
-          npx wrangler@3 pages deploy dist \
+          npx wrangler pages deploy dist \
             --project-name="$PROJECT" \
             --branch="pr-${{ github.event.pull_request.number }}" \
             --commit-dirty=true | tee deploy.log

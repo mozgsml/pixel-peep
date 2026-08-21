@@ -209,22 +209,45 @@ Cross-Origin-Embedder-Policy: require-corp
 ### Секреты
 
 - `CLOUDFLARE_API_TOKEN` — токен **только** с правом «Cloudflare Pages: Edit», не глобальный ключ;
-- `CLOUDFLARE_ACCOUNT_ID`.
+- `CLOUDFLARE_ACCOUNT_ID` — виден в адресной строке дашборда
+  (`https://dash.cloudflare.com/<ACCOUNT_ID>/…`) и в блоке «Account details» справа.
 
-Оба — в GitHub Secrets, в Environment `production`, привязанном к `deploy.yml`.
+Оба — в GitHub Secrets, в Environment `production`, привязанном к `deploy.yml`:
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN  --env production --repo <owner>/<repo>
+gh secret set CLOUDFLARE_ACCOUNT_ID --env production --repo <owner>/<repo>
+```
+
 Имя проекта Pages задаётся переменной `CLOUDFLARE_PROJECT_NAME` (по умолчанию `pixel-peep`).
+
+### Создание проекта Pages
+
+Руками ничего делать не нужно: `deploy.yml` заводит проект сам, если его ещё нет. Это не
+удобство, а необходимость — в новом дашборде Cloudflare раздел «Pages → Direct Upload» из
+интерфейса убран, и остались только Workers-сценарии. API и `wrangler` при этом работают
+по-прежнему. Если хочется создать проект заранее, локально:
+
+```bash
+export CLOUDFLARE_API_TOKEN='...'
+export CLOUDFLARE_ACCOUNT_ID='...'
+npx wrangler pages project create pixel-peep --production-branch=main
+```
 
 ### Ручной откат
 
 ```bash
-# список деплоев
-npx wrangler pages deployment list --project-name=pixel-peep
+# список деплоев, самый свежий сверху
+npx wrangler pages deployment list --project-name=pixel-peep --environment=production
 
 # откатиться на конкретный
-npx wrangler pages deployment rollback <DEPLOYMENT_ID> --project-name=pixel-peep
+curl -X POST \
+  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/pixel-peep/deployments/<DEPLOYMENT_ID>/rollback" \
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"
 ```
 
-Автоматический откат делает `deploy.yml` при падении smoke-теста.
+Через API, а не через `wrangler`: команды `pages deployment rollback` у `wrangler` нет —
+ни в 3, ни в 4. Автоматический откат в `deploy.yml` дёргает тот же эндпоинт.
 
 ---
 
