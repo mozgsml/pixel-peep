@@ -34,34 +34,49 @@ jobs:
       - run: npm test
       - run: npx vite build
 
+      - name: Check the deploy credentials before touching anything
+        run: |
+          # wrangler's own message for a missing account id is a confusing
+          # "authentication error"; say plainly what is not set.
+          : "${CLOUDFLARE_API_TOKEN:?не задан секрет CLOUDFLARE_API_TOKEN (Settings → Environments → production)}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?не задан секрет CLOUDFLARE_ACCOUNT_ID (он же виден в адресе дашборда Cloudflare)}"
+
       - name: Create the Pages project if it does not exist
         run: |
           set -euo pipefail
-          # The dashboard no longer offers "Pages → Direct Upload", so the
-          # project is provisioned here instead of by hand.
-          exists=$(npx wrangler pages project list --json \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-                const list = JSON.parse(s || "[]");
-                console.log(list.some((p) => p.name === process.env.PROJECT) ? "yes" : "no");
-              })')
+          # Straight to the API rather than through wrangler: `--json` still
+          # prints human-readable notices to stdout, which breaks any parser.
+          # The dashboard no longer offers "Pages → Direct Upload" either, so
+          # the project is provisioned here instead of by hand.
+          api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects"
+          curl -sS "$api?per_page=100" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o projects.json
+          exists=$(node -e '
+            const r = require("./projects.json");
+            if (!r.success) { console.error(JSON.stringify(r.errors)); process.exit(1); }
+            console.log(r.result.some((p) => p.name === process.env.PROJECT) ? "yes" : "no");
+          ')
           if [ "$exists" = "no" ]; then
-            npx wrangler pages project create "$PROJECT" --production-branch=main
+            echo "Проекта $PROJECT нет, создаю"
+            curl -sS -X POST "$api" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              -H 'Content-Type: application/json' \
+              -d "{\"name\":\"$PROJECT\",\"production_branch\":\"main\"}" -o created.json
+            node -e 'const r=require("./created.json"); if(!r.success){console.error(JSON.stringify(r.errors));process.exit(1)}'
           fi
 
       - name: Remember the currently live deployment, for rollback
         id: previous
         run: |
           set -euo pipefail
-          id=$(npx wrangler pages deployment list --project-name="$PROJECT" \
-                 --environment=production --json 2>/dev/null \
-               | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-                   try {
-                     const list = JSON.parse(s || "[]");
-                     const live = [...list].sort((a, b) =>
-                       new Date(b.created_on) - new Date(a.created_on))[0];
-                     console.log(live?.id ?? "");
-                   } catch { console.log(""); }
-                 })' || true)
+          curl -sS \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT/deployments?env=production&per_page=10" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o deployments.json
+          id=$(node -e '
+            const r = require("./deployments.json");
+            const list = r.success && Array.isArray(r.result) ? r.result : [];
+            const live = [...list].sort((a, b) => new Date(b.created_on) - new Date(a.created_on))[0];
+            console.log(live?.id ?? "");
+          ')
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
       - name: Deploy
