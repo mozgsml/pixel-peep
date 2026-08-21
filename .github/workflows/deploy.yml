@@ -56,12 +56,12 @@ jobs:
             console.log("Токен активен, статус:", r.result && r.result.status);
           '
 
-          curl -sS "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects?per_page=1" \
+          curl -sS "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o access.json
           # Which accounts the token can see at all; tells apart "wrong id" from
           # "right id, wrong permission". This log is public, so identifiers are
           # only ever compared and masked, never printed in full.
-          curl -sS "https://api.cloudflare.com/client/v4/accounts?per_page=50" \
+          curl -sS "https://api.cloudflare.com/client/v4/accounts" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o accounts.json
           node -e '
             const mask = (id) => id ? id.slice(0, 6) + "…" + id.slice(-4) : "(пусто)";
@@ -105,12 +105,20 @@ jobs:
           # The dashboard no longer offers "Pages → Direct Upload" either, so
           # the project is provisioned here instead of by hand.
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects"
-          curl -sS "$api?per_page=100" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o projects.json
-          exists=$(node -e '
-            const r = require("./projects.json");
-            if (!r.success) { console.error(JSON.stringify(r.errors)); process.exit(1); }
-            console.log(r.result.some((p) => p.name === process.env.PROJECT) ? "yes" : "no");
-          ')
+          # Ask about this one project rather than listing them: the list
+          # endpoint rejects large per_page values, and paginating to find a
+          # known name would be work for nothing.
+          code=$(curl -sS -o project.json -w '%{http_code}' "$api/$PROJECT" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN")
+          if [ "$code" = "200" ]; then
+            exists=yes
+          elif [ "$code" = "404" ]; then
+            exists=no
+          else
+            echo "::error::Неожиданный ответ $code при проверке проекта $PROJECT:"
+            cat project.json
+            exit 1
+          fi
           if [ "$exists" = "no" ]; then
             echo "Проекта $PROJECT нет, создаю"
             curl -sS -X POST "$api" \
@@ -125,7 +133,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -sS \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT/deployments?env=production&per_page=10" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/$PROJECT/deployments?env=production" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o deployments.json
           id=$(node -e '
             const r = require("./deployments.json");
