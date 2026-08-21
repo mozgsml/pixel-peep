@@ -11,7 +11,10 @@ differently, the zoom is synchronised and exact, and holding the space bar flips
 Nothing is uploaded. The files never leave the browser: every encode runs locally in a wasm worker,
 which also means it works offline and on photos you would not send to a stranger's server.
 
-![Two panels at 1:1 showing the same lakeside sunset: the original on the left at 1.15 MB, WebP quality 42 on the right at 17 kB, with size, ratio and PSNR under each](docs/screenshot.png)
+![Two panels showing the same photograph of a snow-covered Scottish glen: the original on the left at 6.91 MB, WebP quality 25 on the right at 848 kB, with size, ratio and PSNR under each](docs/screenshot.png)
+
+<sub>Photograph: *[Mountain Landscapes of Scotland](https://commons.wikimedia.org/wiki/File:Mountain_Landscapes_of_Scotland.jpg)*
+by Liliacevez, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), cropped and re-encoded.</sub>
 
 ---
 
@@ -100,4 +103,9 @@ Node 20.19+ or 22+. That is all — there is no backend, no configuration and no
 
 ## License
 
-MIT.
+The code is MIT.
+
+One exception, because it is somebody else's work: `docs/screenshot.png` contains the photograph
+credited above, which is CC BY-SA 4.0. ShareAlike applies to adaptations, so that file is CC BY-SA
+4.0 rather than MIT. Nothing else in the repository is affected — in particular the code is not,
+since the screenshot is not derived from it.
