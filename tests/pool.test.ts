@@ -90,6 +90,48 @@ describe('WorkerPool', () => {
     pool.terminate();
   });
 
+  it('throws away a worker whose codec bundle failed to download', async () => {
+    // A rejected dynamic import is remembered by the realm's module map, so
+    // that worker can never load that codec again: every later import()
+    // rejects from cache without a network request. Keeping the worker is what
+    // made the "Retry" button useless — it issued no request at all.
+    const pool = makePool(1);
+    const task = pool.run(request);
+    const poisoned = FakeWorker.instances[0]!;
+    poisoned.emit({
+      type: 'error',
+      id: poisoned.running,
+      name: 'CodecLoadError',
+      message: 'Could not download the PNG codec',
+      codec: 'PNG',
+    });
+
+    await expect(task).rejects.toMatchObject({ name: 'CodecLoadError', codec: 'PNG' });
+    expect(poisoned.terminated).toBe(true);
+
+    // The next task gets a fresh realm, which can reach the network again.
+    fire(pool);
+    expect(FakeWorker.instances).toHaveLength(2);
+    expect(FakeWorker.instances[1]!.running).not.toBeNull();
+    pool.terminate();
+  });
+
+  it('keeps the worker when the codec merely refused the image', async () => {
+    // Only a failed download poisons a realm. Throwing the worker away for
+    // every codec error would restart wasm on each bad parameter combination.
+    const pool = makePool(1);
+    const task = pool.run(request);
+    const worker = FakeWorker.instances[0]!;
+    worker.emit({ type: 'error', id: worker.running, name: 'Error', message: 'unsupported subsampling' });
+
+    await expect(task).rejects.toThrow('unsupported subsampling');
+    expect(worker.terminated).toBe(false);
+
+    fire(pool);
+    expect(FakeWorker.instances).toHaveLength(1);
+    pool.terminate();
+  });
+
   it('drops a queued task the moment it is aborted, without ever starting it', async () => {
     const pool = makePool(1);
     fire(pool);

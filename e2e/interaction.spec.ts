@@ -125,3 +125,40 @@ test('alignment only appears when the frames differ in size', async ({ page }) =
   const align = page.locator('.toolbar-group', { has: page.locator('.segmented[aria-label*="lignment"]') });
   await expect(align).toHaveClass(/is-hidden/);
 });
+
+test('a codec chunk lost to the network recovers without a reload', async ({ page }) => {
+  // Reported from production: choosing PNG died with "Failed to fetch
+  // dynamically imported module". The request had simply been dropped — but
+  // the panel then stayed broken for good, because a rejected dynamic import
+  // is cached in the worker's module map and "Retry" issued no request at all.
+  let dropped = 0;
+  const attempts: string[] = [];
+  await page.route(/optimise-.*\.js/, (route) => {
+    attempts.push(dropped === 0 ? 'dropped' : 'served');
+    if (dropped === 0) {
+      dropped++;
+      return route.abort('failed');
+    }
+    return route.continue();
+  });
+
+  await loadFixture(page);
+  await page.locator('[data-testid="panel"]').nth(1).locator('.format-select').selectOption('png');
+  await waitForFullResult(page, 1);
+
+  expect(attempts, 'the chunk should have been fetched a second time').toEqual(['dropped', 'served']);
+  await expect(page.locator('[data-testid="panel"]').nth(1).locator('[data-metric="psnr"]')).toHaveText('∞');
+});
+
+test('a codec that never arrives blames the network, not the file', async ({ page }) => {
+  await page.route(/optimise-.*\.js/, (route) => route.abort('failed'));
+  await loadFixture(page);
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  await panel.locator('.format-select').selectOption('png');
+
+  const overlay = panel.locator('.overlay-error');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toContainText('did not download');
+  // The generic advice is wrong here: no parameter change would ever help.
+  await expect(overlay).not.toContainText('Try different parameters');
+});

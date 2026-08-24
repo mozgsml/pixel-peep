@@ -39,8 +39,21 @@ Each schema entry may also carry a `hint` and an `enabledWhen` predicate, so a c
 become meaningless — quality once lossless is on — disables itself without the UI knowing why.
 Labels and hints are message keys resolved through `t()`; see [translations](i18n.md).
 
-Keep the wasm behind a dynamic `import()` inside `encode` / `decode`. Importing the registry then
-costs nothing, and a codec is fetched only when a panel actually selects it.
+Keep the wasm behind a dynamic `import()` inside `encode` / `decode`, and wrap it in `loadCodec`:
+
+```ts
+const { default: encode } = await loadCodec('WebP', () => import('@jsquash/webp/encode'));
+```
+
+Importing the registry then costs nothing, and a codec is fetched only when a panel actually
+selects it.
+
+The wrapper is not decoration. A dropped request on that first fetch is otherwise permanent: a
+rejected dynamic import is recorded in the realm's module map, so every later `import()` of the
+same specifier rejects from cache **without touching the network** — "Retry" issues no request at
+all and only a page reload recovers. `loadCodec` turns the failure into a `CodecLoadError`, which
+tells the worker pool to retire that worker; the retry then runs in a fresh realm and genuinely
+re-fetches. A codec that skips the wrapper loses all of this silently.
 
 Check `signal.aborted` at every await point. `AbortSignal` genuinely interrupting is part of the
 contract and is tested.

@@ -1,5 +1,5 @@
 import { t } from '../i18n/index.ts';
-import { AbortError } from '../codecs/types.ts';
+import { AbortError, CodecLoadError } from '../codecs/types.ts';
 import type { HostEnvelope, WorkerEnvelope, WorkerRequest } from './protocol.ts';
 
 /**
@@ -110,6 +110,14 @@ export class WorkerPool {
     finish();
   }
 
+  /** Retires one worker; the next task that needs a slot gets a fresh one. */
+  #discard(slot: Slot): void {
+    const index = this.#slots.indexOf(slot);
+    if (index < 0) return;
+    this.#slots.splice(index, 1);
+    slot.worker.terminate();
+  }
+
   #ensureSlot(): Slot | null {
     const idle = this.#slots.find((s) => s.task === null);
     if (idle) return idle;
@@ -124,9 +132,17 @@ export class WorkerPool {
       if (!task || task.id !== message.id) return;
       slot.task = null;
 
+      // A codec whose bundle failed to download has poisoned this worker's
+      // module map: every later `import()` of that specifier rejects from
+      // cache without a network request, so the worker can never run that
+      // format again. Throw it away — `#ensureSlot` makes a fresh one, and a
+      // retry there actually reaches the network.
+      if (message.type === 'error' && message.name === 'CodecLoadError') this.#discard(slot);
+
       this.#settle(task, () => {
         if (message.type === 'result') task.resolve(message.payload);
         else if (message.name === 'AbortError') task.reject(new AbortError(message.message));
+        else if (message.name === 'CodecLoadError') task.reject(new CodecLoadError(message.codec ?? ''));
         else task.reject(new Error(message.message));
       });
 

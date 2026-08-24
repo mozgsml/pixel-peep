@@ -1,4 +1,4 @@
-import { type CodecAdapter, bool, num, str, throwIfAborted } from './types.ts';
+import { type CodecAdapter, bool, loadCodec, num, str, throwIfAborted } from './types.ts';
 
 /**
  * MozJPEG. Option names taken from
@@ -32,7 +32,7 @@ export const adapter: CodecAdapter = {
 
   async encode(image, params, signal) {
     throwIfAborted(signal);
-    const { default: encode } = await import('@jsquash/jpeg/encode');
+    const { default: encode } = await loadCodec('JPEG', () => import('@jsquash/jpeg/encode'));
     throwIfAborted(signal);
     return encode(image, {
       quality: num(params, 'quality', 80),
@@ -44,7 +44,7 @@ export const adapter: CodecAdapter = {
 
   async decode(bytes, signal) {
     throwIfAborted(signal);
-    const { default: decode } = await import('@jsquash/jpeg/decode');
+    const { default: decode } = await loadCodec('JPEG', () => import('@jsquash/jpeg/decode'));
     throwIfAborted(signal);
     return decode(bytes);
   },

@@ -246,9 +246,17 @@ export class PanelView {
       const card = el(
         'div',
         { class: 'overlay-card overlay-error' },
-        el('strong', {}, t('panel.overlay.errorTitle')),
+        el(
+          'strong',
+          {},
+          t(panel.errorKind === 'load' ? 'panel.overlay.loadErrorTitle' : 'panel.overlay.errorTitle'),
+        ),
         el('p', {}, panel.error ?? t('panel.overlay.errorUnknown')),
-        el('p', { class: 'overlay-hint' }, t('panel.overlay.errorHint')),
+        el(
+          'p',
+          { class: 'overlay-hint' },
+          t(panel.errorKind === 'load' ? 'panel.overlay.loadErrorHint' : 'panel.overlay.errorHint'),
+        ),
       );
       const retry = el('button', { type: 'button', class: 'button' }, t('panel.overlay.retry'));
       retry.addEventListener('click', () => this.#host.onRetry(this.#index));

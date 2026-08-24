@@ -1,4 +1,4 @@
-import { type CodecAdapter, bool, num, throwIfAborted } from './types.ts';
+import { type CodecAdapter, bool, loadCodec, num, throwIfAborted } from './types.ts';
 
 /**
  * libwebp. Option names from node_modules/@jsquash/webp/codec/enc/webp_enc.d.ts;
@@ -55,7 +55,7 @@ export const adapter: CodecAdapter = {
 
   async encode(image, params, signal) {
     throwIfAborted(signal);
-    const { default: encode } = await import('@jsquash/webp/encode');
+    const { default: encode } = await loadCodec('WebP', () => import('@jsquash/webp/encode'));
     throwIfAborted(signal);
     const lossless = bool(params, 'lossless', false);
     const near = num(params, 'nearLossless', 0);
@@ -70,7 +70,7 @@ export const adapter: CodecAdapter = {
 
   async decode(bytes, signal) {
     throwIfAborted(signal);
-    const { default: decode } = await import('@jsquash/webp/decode');
+    const { default: decode } = await loadCodec('WebP', () => import('@jsquash/webp/decode'));
     throwIfAborted(signal);
     return decode(bytes);
   },

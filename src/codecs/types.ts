@@ -12,6 +12,8 @@
  * format id anywhere outside this directory.
  */
 
+import { t } from '../i18n/index.ts';
+
 export type ParamValue = number | boolean | string;
 
 interface ParamBase {
@@ -78,6 +80,38 @@ export class AbortError extends Error {
 
 export function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw new AbortError();
+}
+
+/**
+ * A codec's wasm bundle could not be downloaded.
+ *
+ * Worth its own type because it is the one codec failure that is nobody's
+ * fault and clears up by itself: a dropped request on a lazily loaded chunk.
+ * It also cannot be retried in place — a rejected dynamic import is recorded
+ * in the realm's module map, so every later `import()` of the same specifier
+ * rejects from cache without touching the network. The only cure is a fresh
+ * realm, which is why the pool throws the worker away when it sees this.
+ */
+export class CodecLoadError extends Error {
+  constructor(
+    readonly codec: string,
+    options?: { cause?: unknown },
+  ) {
+    super(t('error.codecDownload', { codec }), options);
+    this.name = 'CodecLoadError';
+  }
+}
+
+/**
+ * Wraps the lazy `import()` of a codec so a network failure is distinguishable
+ * from the codec genuinely rejecting the image.
+ */
+export async function loadCodec<T>(label: string, load: () => Promise<T>): Promise<T> {
+  try {
+    return await load();
+  } catch (cause) {
+    throw new CodecLoadError(label, { cause });
+  }
 }
 
 /** Default parameter record derived straight from a schema. */

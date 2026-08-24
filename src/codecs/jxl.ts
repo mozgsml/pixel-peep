@@ -1,4 +1,4 @@
-import { type CodecAdapter, bool, num, throwIfAborted } from './types.ts';
+import { type CodecAdapter, bool, loadCodec, num, throwIfAborted } from './types.ts';
 
 /**
  * libjxl. Option names from node_modules/@jsquash/jxl/codec/enc/jxl_enc.d.ts.
@@ -45,7 +45,7 @@ export const adapter: CodecAdapter = {
 
   async encode(image, params, signal) {
     throwIfAborted(signal);
-    const { default: encode } = await import('@jsquash/jxl/encode');
+    const { default: encode } = await loadCodec('JPEG XL', () => import('@jsquash/jxl/encode'));
     throwIfAborted(signal);
     const lossless = bool(params, 'lossless', false);
     return encode(image, {
@@ -58,7 +58,7 @@ export const adapter: CodecAdapter = {
 
   async decode(bytes, signal) {
     throwIfAborted(signal);
-    const { default: decode } = await import('@jsquash/jxl/decode');
+    const { default: decode } = await loadCodec('JPEG XL', () => import('@jsquash/jxl/decode'));
     throwIfAborted(signal);
     return decode(bytes);
   },

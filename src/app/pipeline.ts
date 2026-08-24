@@ -1,6 +1,6 @@
 import { t } from '../i18n/index.ts';
 import { REFERENCE_FORMAT } from '../codecs/registry.ts';
-import { AbortError, type ParamValue } from '../codecs/types.ts';
+import { AbortError, CodecLoadError, type ParamValue } from '../codecs/types.ts';
 import { LruCache, cacheKey } from '../core/cache.ts';
 import type { ImageSource } from '../core/image-source.ts';
 import type { Metrics } from '../core/metrics.ts';
@@ -81,7 +81,7 @@ export class EncodePipeline {
     // debounce window doing nothing visible otherwise, and the picture on
     // screen still belongs to the previous settings.
     if (panel.formatId !== REFERENCE_FORMAT && panel.sourceId) {
-      this.#store.set((s) => ({ panels: updatePanel(s, index, { status: 'encoding', error: undefined }) }));
+      this.#store.set((s) => ({ panels: updatePanel(s, index, { status: 'encoding', error: undefined, errorKind: undefined }) }));
     }
 
     if (mode === 'preview') next.timer = setTimeout(start, PREVIEW_DEBOUNCE_MS);
@@ -124,7 +124,33 @@ export class EncodePipeline {
   #fail(index: number, job: PanelJob, error: unknown): void {
     if (!this.#isCurrent(index, job)) return;
     const message = error instanceof Error ? error.message : String(error);
-    this.#store.set((state) => ({ panels: updatePanel(state, index, { status: 'error', error: message }) }));
+    const errorKind = error instanceof CodecLoadError ? 'load' : 'codec';
+    this.#store.set((state) => ({
+      panels: updatePanel(state, index, { status: 'error', error: message, errorKind }),
+    }));
+  }
+
+  /**
+   * One retry when the codec bundle did not arrive.
+   *
+   * The pool has retired the worker that saw the failure, so the second attempt
+   * runs in a fresh realm and genuinely re-fetches; retrying in the same one
+   * would be answered from the module map without a request. Anything else the
+   * codec throws is a real answer about this image and is not retried.
+   */
+  async #encodeWithRetry(
+    source: ImageSource,
+    formatId: string,
+    params: Readonly<Record<string, ParamValue>>,
+    quality: ResultQuality,
+    signal: AbortSignal,
+  ): Promise<EncodeResult> {
+    try {
+      return await this.#encode(source, formatId, params, quality, signal);
+    } catch (error) {
+      if (!(error instanceof CodecLoadError) || signal.aborted) throw error;
+      return this.#encode(source, formatId, params, quality, signal);
+    }
   }
 
   async #run(index: number, mode: 'preview' | 'final', job: PanelJob): Promise<void> {
@@ -161,7 +187,8 @@ export class EncodePipeline {
       if (!this.#isCurrent(index, job)) throw new AbortError();
 
       const cached = this.#cached(source, panel.formatId, panel.params, quality);
-      const result = cached ?? (await this.#encode(source, panel.formatId, panel.params, quality, job.controller.signal));
+      const result =
+        cached ?? (await this.#encodeWithRetry(source, panel.formatId, panel.params, quality, job.controller.signal));
       if (!this.#isCurrent(index, job)) throw new AbortError();
 
       // Metrics are measured against the reference at the same resolution;
@@ -200,6 +227,7 @@ export class EncodePipeline {
         diff,
         status: 'ready',
         error: undefined,
+        errorKind: undefined,
         revision: panel.revision + 1,
       })),
     }));

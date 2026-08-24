@@ -71,7 +71,14 @@ export interface DiffResponse {
 export type WorkerEnvelope =
   | { readonly type: 'ready' }
   | { readonly type: 'result'; readonly id: number; readonly payload: unknown; readonly transfer?: number }
-  | { readonly type: 'error'; readonly id: number; readonly message: string; readonly name: string };
+  | {
+      readonly type: 'error';
+      readonly id: number;
+      readonly message: string;
+      readonly name: string;
+      /** Set only on `CodecLoadError`: which format failed to download. */
+      readonly codec?: string;
+    };
 
 export type HostEnvelope =
   | { readonly type: 'run'; readonly id: number; readonly request: WorkerRequest }

@@ -8,6 +8,7 @@ import {
   nextSourceId,
   proxyScale,
 } from '../core/image-source.ts';
+import { loadCodec } from '../codecs/types.ts';
 import { context2d, createCanvas, downscaleImageData } from '../render/downscale.ts';
 
 export class UnsupportedFileError extends Error {
@@ -34,7 +35,7 @@ async function decodeNative(buffer: ArrayBuffer, mime: string): Promise<ImageDat
 }
 
 async function decodeHeif(buffer: ArrayBuffer): Promise<ImageData> {
-  const { default: factory } = await import('libheif-js/libheif-wasm/libheif-bundle.mjs');
+  const { default: factory } = await loadCodec('HEIC', () => import('libheif-js/libheif-wasm/libheif-bundle.mjs'));
   const libheif = factory();
   const decoder = new libheif.HeifDecoder();
   const images = decoder.decode(buffer);
@@ -57,7 +58,7 @@ async function decodeHeif(buffer: ArrayBuffer): Promise<ImageData> {
 }
 
 async function decodeJxl(buffer: ArrayBuffer): Promise<ImageData> {
-  const { default: decode } = await import('@jsquash/jxl/decode');
+  const { default: decode } = await loadCodec('JPEG XL', () => import('@jsquash/jxl/decode'));
   return decode(buffer);
 }
 

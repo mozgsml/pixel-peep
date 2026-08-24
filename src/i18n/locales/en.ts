@@ -85,7 +85,9 @@ export const en = {
 
   'panel.overlay.drop': 'Drop a file here',
   'panel.overlay.errorTitle': 'The codec failed',
+  'panel.overlay.loadErrorTitle': 'The codec did not download',
   'panel.overlay.errorHint': 'Try different parameters or another format.',
+  'panel.overlay.loadErrorHint': 'The codec is downloaded the first time you use it. This looks like a network problem rather than a bad file — retrying usually works.',
   'panel.overlay.errorUnknown': 'Unknown error',
   'panel.overlay.retry': 'Retry',
   'panel.overlay.busy': 'Encoding…',
@@ -160,6 +162,7 @@ export const en = {
   'error.heicNoImages': 'HEIC: the file contains no images',
   'error.heicDecode': 'HEIC: decoding failed',
   'error.avifEmpty': 'AVIF: the decoder returned an empty result',
+  'error.codecDownload': 'Could not download the {codec} codec',
   'error.workerFailed': 'Worker error',
   'error.poolStopped': 'Worker pool stopped',
 

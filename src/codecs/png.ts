@@ -1,4 +1,4 @@
-import { type CodecAdapter, bool, num, throwIfAborted } from './types.ts';
+import { type CodecAdapter, bool, loadCodec, num, throwIfAborted } from './types.ts';
 
 /**
  * PNG via oxipng. Always mathematically lossless, so it is not a competitor
@@ -28,7 +28,7 @@ export const adapter: CodecAdapter = {
 
   async encode(image, params, signal) {
     throwIfAborted(signal);
-    const { default: optimise } = await import('@jsquash/oxipng/optimise');
+    const { default: optimise } = await loadCodec('PNG', () => import('@jsquash/oxipng/optimise'));
     throwIfAborted(signal);
     return optimise(image, {
       level: num(params, 'level', 2),
@@ -39,7 +39,7 @@ export const adapter: CodecAdapter = {
 
   async decode(bytes, signal) {
     throwIfAborted(signal);
-    const { default: decode } = await import('@jsquash/png/decode');
+    const { default: decode } = await loadCodec('PNG', () => import('@jsquash/png/decode'));
     throwIfAborted(signal);
     return decode(bytes);
   },

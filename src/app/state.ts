@@ -30,6 +30,8 @@ export interface PanelState {
   readonly result: EncodeResult | null;
   readonly status: PanelStatus;
   readonly error?: string;
+  /** `load` means the codec bundle never arrived — retrying is the cure. */
+  readonly errorKind?: 'load' | 'codec';
   readonly metrics: Metrics | null;
   /** `|result - reference|` at gain 1; amplification is applied at draw time. */
   readonly diff: ImageData | null;

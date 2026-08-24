@@ -84,7 +84,9 @@ export const ru: Partial<Messages> = {
 
   'panel.overlay.drop': 'Перетащите файл сюда',
   'panel.overlay.errorTitle': 'Кодек не справился',
+  'panel.overlay.loadErrorTitle': 'Кодек не скачался',
   'panel.overlay.errorHint': 'Попробуйте другие параметры или другой формат.',
+  'panel.overlay.loadErrorHint': 'Кодек скачивается при первом обращении к формату. Похоже на проблему с сетью, а не с файлом — обычно помогает повторная попытка.',
   'panel.overlay.errorUnknown': 'Неизвестная ошибка',
   'panel.overlay.retry': 'Повторить',
   'panel.overlay.busy': 'Кодирование…',
@@ -157,6 +159,7 @@ export const ru: Partial<Messages> = {
   'error.heicNoImages': 'HEIC: в файле нет изображений',
   'error.heicDecode': 'HEIC: ошибка декодирования',
   'error.avifEmpty': 'AVIF: декодер вернул пустой результат',
+  'error.codecDownload': 'Не удалось скачать кодек {codec}',
   'error.workerFailed': 'Ошибка воркера',
   'error.poolStopped': 'Пул воркеров остановлен',
 

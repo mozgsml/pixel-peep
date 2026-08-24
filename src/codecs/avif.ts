@@ -1,5 +1,5 @@
 import { t } from '../i18n/index.ts';
-import { type CodecAdapter, bool, num, str, throwIfAborted } from './types.ts';
+import { type CodecAdapter, bool, loadCodec, num, str, throwIfAborted } from './types.ts';
 
 /**
  * libavif. Option names from node_modules/@jsquash/avif/codec/enc/avif_enc.d.ts
@@ -55,7 +55,7 @@ export const adapter: CodecAdapter = {
 
   async encode(image, params, signal) {
     throwIfAborted(signal);
-    const { default: encode } = await import('@jsquash/avif/encode');
+    const { default: encode } = await loadCodec('AVIF', () => import('@jsquash/avif/encode'));
     throwIfAborted(signal);
     const lossless = bool(params, 'lossless', false);
     return encode(image, {
@@ -70,7 +70,7 @@ export const adapter: CodecAdapter = {
 
   async decode(bytes, signal) {
     throwIfAborted(signal);
-    const { default: decode } = await import('@jsquash/avif/decode');
+    const { default: decode } = await loadCodec('AVIF', () => import('@jsquash/avif/decode'));
     throwIfAborted(signal);
     const result = await decode(bytes);
     if (!result) throw new Error(t('error.avifEmpty'));

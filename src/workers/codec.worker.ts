@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import { getCodec } from '../codecs/registry.ts';
-import { AbortError } from '../codecs/types.ts';
+import { AbortError, CodecLoadError } from '../codecs/types.ts';
 import { compare, diffMap } from '../core/metrics.ts';
 import {
   type DiffResponse,
@@ -82,12 +82,21 @@ self.addEventListener('message', (event: MessageEvent<HostEnvelope>) => {
       self.postMessage({ type: 'result', id: message.id, payload }, transfer);
     })
     .catch((error: unknown) => {
-      const name = error instanceof AbortError || controller.signal.aborted ? 'AbortError' : 'Error';
+      // The name travels to the host so the pool can tell a codec that refused
+      // the image from one whose bundle never arrived — only the latter makes
+      // this worker unusable for that codec from now on.
+      const name =
+        error instanceof AbortError || controller.signal.aborted
+          ? 'AbortError'
+          : error instanceof CodecLoadError
+            ? 'CodecLoadError'
+            : 'Error';
       self.postMessage({
         type: 'error',
         id: message.id,
         name,
         message: error instanceof Error ? error.message : String(error),
+        ...(error instanceof CodecLoadError ? { codec: error.codec } : {}),
       });
     })
     .finally(() => {
