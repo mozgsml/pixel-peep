@@ -78,6 +78,11 @@ PSNR and SSIM are shown because they are cheap and occasionally informative, not
 decide. PSNR correlates poorly with perception: a frame nudged slightly in brightness scores badly
 while a smeared one scores well. Treat them as a hint and trust the flip test.
 
+The quality sliders are not one scale either. Each number belongs to its own codec: JPEG XL's 75 is
+a Butteraugli distance of 2.35 — more than twice the point libjxl itself calls visually lossless —
+while JPEG's 75 is an ordinary setting for the web. Every format here opens at its own maker's
+default rather than at a shared number, and the tooltip on a slider says what that number means.
+
 PNG is in the format list as a control rather than a competitor — being lossless, its PSNR must read
 `∞`. If it ever does not, the tool is broken, not the codec.
 

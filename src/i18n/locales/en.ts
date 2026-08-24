@@ -139,6 +139,9 @@ export const en = {
   'param.lossless.jxlHint':
     'The encoder is lossless, but the libjxl wasm decoder rounds through float: a handful of samples out of thousands can differ by ±1, so PSNR will not read ∞',
   'param.effort': 'Effort',
+  'param.quality.jxlHint':
+    'Not JPEG\u2019s scale. libjxl turns this into a Butteraugli distance — 90 is distance 1.0, which it calls '
+    + 'visually lossless; 75 is 2.35, over twice that. The same number means a much smaller file here.',
   'param.effort.jxlHint': 'libjxl effort: 1 — instant and loose, 9 — slow and dense',
   'param.effort.avifHint': 'Higher is markedly slower. 10 can take minutes at full size',
   'param.effort.webpHint': 'Higher is slower and denser',

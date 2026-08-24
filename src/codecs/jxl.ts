@@ -2,8 +2,18 @@ import { type CodecAdapter, bool, loadCodec, num, throwIfAborted } from './types
 
 /**
  * libjxl. Option names from node_modules/@jsquash/jxl/codec/enc/jxl_enc.d.ts.
- * `quality` is mapped to Butteraugli distance inside the codec wrapper, so the
- * 0..100 scale here stays comparable with the other formats.
+ *
+ * The 0..100 here is *not* JPEG's scale, and the difference is large enough to
+ * mislead. Inside the encoder the number becomes a Butteraugli distance:
+ *
+ *   distance = 0.1 + (100 − quality) × 0.09        (for quality ≥ 30)
+ *
+ * Distance is measured in just-noticeable differences, and libjxl calls `-d 1`
+ * — quality 90 — visually lossless. Squoosh's default of 75 is distance 2.35,
+ * over twice the threshold at which loss becomes visible: fine texture goes,
+ * and the file lands near a quarter of the original while JPEG at the same
+ * number is still around a half. That reads as a broken slider rather than as
+ * a different scale, so this opens at libjxl's own default instead.
  */
 export const adapter: CodecAdapter = {
   id: 'jxl',
@@ -20,7 +30,8 @@ export const adapter: CodecAdapter = {
       min: 0,
       max: 100,
       step: 1,
-      default: 75,
+      default: 90,
+      hint: 'param.quality.jxlHint',
       enabledWhen: (p) => p['lossless'] !== true,
     },
     {
