@@ -34,7 +34,13 @@ export class PanelView {
   #format = el('select', { class: 'format-select' });
   #note = el('span', { class: 'panel-note' });
   #badge = el('span', { class: 'panel-badge' });
-  #busy = el('span', { class: 'panel-busy', role: 'status' }, el('span', { class: 'spinner spinner-small' }));
+  #busyText = el('span', { class: 'panel-busy-text' });
+  #busy = el(
+    'span',
+    { class: 'panel-busy', role: 'status' },
+    el('span', { class: 'spinner spinner-small' }),
+    this.#busyText,
+  );
   #load = el('button', { type: 'button', class: 'button button-quiet panel-load' });
   #download = el('button', { type: 'button', class: 'button button-quiet panel-download' });
   #overlay = el('div', { class: 'panel-overlay' });
@@ -86,7 +92,7 @@ export class PanelView {
       metric(this.#sizeLabel, this.#size),
       metric(this.#ratioLabel, this.#ratio),
       this.#psnrMetric,
-      el('div', { class: 'panel-actions' }, this.#download, this.#detailsButton),
+      el('div', { class: 'panel-actions' }, this.#busy, this.#download, this.#detailsButton),
     );
     this.#metricsRow.appendChild(metrics);
     this.#metricsRow.appendChild(this.#detailsRow);
@@ -99,7 +105,7 @@ export class PanelView {
         { class: 'panel-head' },
         this.#format,
         this.#note,
-        el('div', { class: 'panel-head-actions' }, this.#busy, this.#badge, this.#load),
+        el('div', { class: 'panel-head-actions' }, this.#badge, this.#load),
       ),
       this.viewport,
       this.#metricsRow,
@@ -183,6 +189,7 @@ export class PanelView {
     // stays, so without this nothing on screen says a new encode is running.
     toggleClass(this.#busy, 'is-visible', panel.status === 'encoding');
     this.#busy.setAttribute('aria-label', t('panel.overlay.busy'));
+    setText(this.#busyText, t('panel.overlay.busy'));
 
     toggleClass(this.#metricsRow, 'is-hidden', !source);
     this.#detailsRow.hidden = !state.detailsOpen;

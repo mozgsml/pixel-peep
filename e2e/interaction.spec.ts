@@ -187,3 +187,55 @@ test('switching to Continue lands on a view that shows something', async ({ page
 
   for (const painted of drawn) expect(painted, 'a panel was left on empty background').toBeGreaterThan(0);
 });
+
+test('a panel stays visibly busy until the full-size result lands', async ({ page }) => {
+  // Reported: move the quality slider, no loader, and the size only settles
+  // seconds later. The proxy pass was publishing itself as `ready`, so the
+  // spinner went out and a preview byte count — three times off on a large
+  // photo — sat there looking like the answer.
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2800;
+    canvas.height = 1800; // over PROXY_MAX_PIXELS, so a proxy pass really happens
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#204080');
+    gradient.addColorStop(1, '#e0b070');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < 600; i++) {
+      ctx.fillStyle = `hsl(${(i * 37) % 360} 60% ${30 + (i % 40)}%)`;
+      ctx.fillRect((i * 97) % canvas.width, (i * 61) % canvas.height, 40, 40);
+    }
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+    await window.pixelPeep.app.openFiles([new File([blob], 'big.png', { type: 'image/png' })]);
+  });
+
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 120_000 });
+
+  // Record every state the panel passes through, so nothing depends on catching
+  // a moment.
+  await panel.evaluate((el) => {
+    const seen: string[] = [];
+    (window as unknown as { seen: string[] }).seen = seen;
+    const note = () => {
+      const busy = el.querySelector('.panel-busy')!.classList.contains('is-visible');
+      const state = `${el.getAttribute('data-status')}|${el.getAttribute('data-quality')}|${busy ? 'busy' : 'idle'}`;
+      if (seen.at(-1) !== state) seen.push(state);
+    };
+    note();
+    new MutationObserver(note).observe(el, { attributes: true, subtree: true, attributeFilter: ['data-status', 'data-quality', 'class'] });
+  });
+
+  await panel.locator('.format-select').selectOption('webp');
+  await waitForFullResult(page, 1);
+  const seen = await page.evaluate(() => (window as unknown as { seen: string[] }).seen);
+
+  // The preview must arrive while the panel still says it is working.
+  expect(seen.some((s) => s.startsWith('encoding|proxy')), `states seen: ${seen.join(' → ')}`).toBe(true);
+  // And it must never claim to be finished while showing one.
+  expect(seen.filter((s) => s.startsWith('ready|proxy')), `states seen: ${seen.join(' → ')}`).toEqual([]);
+  // Whenever it is working, the indicator is up.
+  expect(seen.filter((s) => s.startsWith('encoding') && s.endsWith('idle')), `states seen: ${seen.join(' → ')}`).toEqual([]);
+});

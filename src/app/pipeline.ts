@@ -183,7 +183,7 @@ export class EncodePipeline {
       targets = this.#cached(source, panel.formatId, panel.params, 'full') ? ['full'] : ['proxy', 'full'];
     }
 
-    for (const quality of targets) {
+    for (const [step, quality] of targets.entries()) {
       if (!this.#isCurrent(index, job)) throw new AbortError();
 
       const cached = this.#cached(source, panel.formatId, panel.params, quality);
@@ -206,7 +206,12 @@ export class EncodePipeline {
           : null;
       if (!this.#isCurrent(index, job)) throw new AbortError();
 
-      this.#publish(index, job, result, metrics, diff);
+      // A proxy pass with a full-size pass still to come is a stopping point,
+      // not an answer: publish the picture and the provisional number, but stay
+      // marked as working. Reporting `ready` here turned the spinner off and
+      // left a preview byte count sitting there looking final — on a large
+      // photo for several seconds, and three times off.
+      this.#publish(index, job, result, metrics, diff, step < targets.length - 1);
     }
 
     this.#jobs.delete(panel.id);
@@ -218,6 +223,8 @@ export class EncodePipeline {
     result: EncodeResult,
     metrics: Metrics | null,
     diff: ImageData | null,
+    /** Another pass for this panel is still to come. */
+    more = false,
   ): void {
     if (!this.#isCurrent(index, job)) return;
     this.#store.set((state) => ({
@@ -225,7 +232,7 @@ export class EncodePipeline {
         result,
         metrics,
         diff,
-        status: 'ready',
+        status: more ? 'encoding' : 'ready',
         error: undefined,
         errorKind: undefined,
         revision: panel.revision + 1,

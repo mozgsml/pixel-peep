@@ -1170,15 +1170,32 @@ body.is-compact .icon-button {
   margin-left: 0;
 }
 
-/* Encoding indicator for a panel that already shows a result: without it a
-   dragged slider changes nothing on screen until the new encode lands. */
+/* Encoding indicator, deliberately sitting with the metrics rather than up in
+   the panel header: while a pass is running the numbers beside it belong to the
+   previous settings, or to a proxy, and "are these current?" is the question
+   being answered. `visibility` rather than `display`, so the row does not jump
+   as it comes and goes. */
 .panel-busy {
-  display: none;
+  visibility: hidden;
+  display: inline-flex;
   align-items: center;
+  gap: 6px;
+  margin-right: 12px;
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .panel-busy.is-visible {
-  display: inline-flex;
+  visibility: visible;
+}
+
+/* The figures are not the answer yet: either left over from the previous
+   settings or measured on the proxy. Dimming says so without moving anything.
+   Not dimmer than this: the metrics have to stay at AA, and 0.45 measured
+   3.98:1 against the panel background. */
+.panel.is-busy .metric-value {
+  opacity: 0.55;
 }
 
 .spinner-small {
