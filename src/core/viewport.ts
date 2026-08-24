@@ -6,12 +6,11 @@ import {
   type PanelGeometry,
   type SyncMode,
   type ViewState,
-  clampPoint,
-  fitScale,
+  clampLeaderCentre,
   layoutGeometry,
+  panelFits,
   panBy,
   scaleForZoom,
-  visibleSpan,
   zoomAtCursor,
   zoomForScale,
 } from './geometry.ts';
@@ -162,24 +161,19 @@ export class Viewport {
 
   /** Current magnification of a panel, as a plain multiplier. */
   scaleOf(index: number): number {
-    const box = this.#boxes[index];
-    if (!box) return 1;
-    return scaleForZoom(fitScale(box, this.#align), this.#view.z);
+    if (!this.#boxes[index]) return 1;
+    return scaleForZoom(panelFits(this.#boxes, this.#align)[index]!, this.#view.z);
   }
 
   /** `z` that would show panel `index` at an exact magnification. */
   zoomForMagnification(index: number, magnification: number): number {
-    const box = this.#boxes[index];
-    if (!box) return this.#view.z;
-    return zoomForScale(fitScale(box, this.#align), magnification);
+    if (!this.#boxes[index]) return this.#view.z;
+    return zoomForScale(panelFits(this.#boxes, this.#align)[index]!, magnification);
   }
 
   #reclamp(): void {
-    const box = this.#boxes[0];
-    if (!box) return;
-    const scale = scaleForZoom(fitScale(box, this.#align), this.#view.z);
-    const vis = visibleSpan(box, scale);
-    const point = clampPoint({ u: this.#view.u, v: this.#view.v }, vis.visW, vis.visH);
+    if (!this.#boxes[0]) return;
+    const point = clampLeaderCentre(this.#boxes, this.#view, this.options);
     this.#view = { z: this.#view.z, u: point.u, v: point.v };
   }
 }

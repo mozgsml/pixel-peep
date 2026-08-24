@@ -7,6 +7,7 @@ import {
   fitScale,
   layoutGeometry,
   leaderCentreFor,
+  panelFits,
   panBy,
   panelGeometry,
   pointAtCursor,
@@ -210,7 +211,9 @@ describe('panning modes', () => {
   });
 
   it('drives the whole set from a drag on the second panel', () => {
-    const view = { z: 0.85, u: 0.5, v: 0.5 };
+    // Away from the ends of the travel: at u = 0.5 the row already has its
+    // trailing edge on the frame's edge and there is nothing left to give.
+    const view = { z: 0.85, u: 0.4, v: 0.5 };
     const next = panBy({ boxes: [landscape, portrait], view, opts: continuous, index: 1, dx: -60, dy: 0 });
     const before = layoutGeometry([landscape, portrait], view, continuous)[1]!;
     const after = layoutGeometry([landscape, portrait], next, continuous)[1]!;
@@ -287,6 +290,92 @@ describe('splitStage', () => {
   });
 });
 
+describe('one photograph, one magnification', () => {
+  // Reported from a 4096x2304 photo with the divider dragged to about 27/73:
+  // the narrow panel fitted the frame against its width, the wide one against
+  // its height, and the same picture came out 2.5x larger on one side.
+  const wide = { width: 4096, height: 2304 };
+  const dragged: PanelBox[] = [
+    { image: wide, panel: { width: 697, height: 1003 } },
+    { image: wide, panel: { width: 1908, height: 1003 } },
+  ];
+
+  it('gives panels holding the same frame the same fit', () => {
+    const fits = panelFits(dragged);
+    expect(fits[0]).toBeCloseTo(fits[1]!, 12);
+  });
+
+  it('takes the smallest fit, so no panel crops the frame at z = 0', () => {
+    const geoms = layoutGeometry(dragged, { z: 0, u: 0.5, v: 0.5 }, mirror);
+    for (const [index, geom] of geoms.entries()) {
+      const box = dragged[index]!;
+      expect(box.image.width * geom.scale).toBeLessThanOrEqual(box.panel.width + 1);
+      expect(box.image.height * geom.scale).toBeLessThanOrEqual(box.panel.height + 1);
+    }
+  });
+
+  it('holds the magnification equal at every zoom', () => {
+    for (const z of [-0.35, 0, 0.3, 0.7, 1, 2]) {
+      const geoms = layoutGeometry(dragged, { z, u: 0.5, v: 0.5 }, mirror);
+      expect(geoms[0]!.scale).toBeCloseTo(geoms[1]!.scale, 12);
+    }
+  });
+
+  it('still fits frames of different sizes to their own panels', () => {
+    // Different frames are what the alignment control is for; forcing one
+    // scale there would shrink the smaller frame for no reason.
+    const fits = panelFits([landscape, portrait]);
+    expect(fits[0]).not.toBeCloseTo(fits[1]!, 6);
+  });
+});
+
+describe('panning in continuous mode', () => {
+  // From the report: a 4096x2304 frame, the panels roughly even, everything
+  // fitted. The picture would not travel far enough for the second panel to
+  // come onto the frame — it sat on a sliver of the right-hand edge and the
+  // drag simply stopped.
+  const wide = { width: 4096, height: 2304 };
+  const boxes: PanelBox[] = [
+    { image: wide, panel: { width: 1256, height: 547 } },
+    { image: wide, panel: { width: 1348, height: 547 } },
+  ];
+  const opts: LayoutOptions = { sync: 'continuous', align: 'contain', axis: 'x', gap: 7 };
+
+  /** How much of the frame a panel actually shows, as a fraction of its width. */
+  function seen(geom: { u: number; visW: number }): number {
+    return Math.max(0, Math.min(1, geom.u + geom.visW / 2) - Math.max(0, geom.u - geom.visW / 2));
+  }
+
+  /** Drag one way until it stops, and report where the travel ended. */
+  function dragToEnd(dx: number) {
+    let view = { z: 0, u: 0.5, v: 0.5 };
+    let steps = 0;
+    for (; steps < 500; steps++) {
+      const next = panBy({ boxes, view, opts, index: 0, dx, dy: 0 });
+      if (Math.abs(next.u - view.u) < 1e-9) break;
+      view = next;
+    }
+    return { geoms: layoutGeometry(boxes, view, opts), steps };
+  }
+
+  it('can bring the trailing panel onto the frame', () => {
+    // Clamping the leader alone capped this at about a third of the frame.
+    const { geoms } = dragToEnd(40);
+    expect(seen(geoms[1]!)).toBeGreaterThan(0.99);
+  });
+
+  it('can bring the leading panel onto the frame', () => {
+    const { geoms } = dragToEnd(-40);
+    expect(seen(geoms[0]!)).toBeGreaterThan(0.94);
+  });
+
+  it('travels a bounded distance and then stops', () => {
+    const { steps } = dragToEnd(40);
+    expect(steps).toBeGreaterThan(0);
+    expect(steps).toBeLessThan(500);
+  });
+});
+
 describe('the splitter in continuous mode', () => {
   const boxes = [
     { image: { width: 1000, height: 1000 }, panel: { width: 500, height: 500 } },
@@ -301,9 +390,14 @@ describe('the splitter in continuous mode', () => {
     expect(withGap[1]!.u - seamless[1]!.u).toBeCloseTo(0.007, 6);
   });
 
-  it('leaves the leader alone', () => {
+  it('tiles the frame across the row rather than hanging off its end', () => {
+    // Two 500 px panels on a 1000 px frame at 1:1: the row is exactly as long
+    // as the frame, so continuous mode has one correct answer — the left half
+    // and the right half. Clamping the leader on its own left it centred at
+    // 0.5, which put panel 0 on the middle and ran panel 1 off the edge.
     const withGap = layoutGeometry(boxes, view, { sync: 'continuous', align: 'contain', axis: 'x', gap: 7 });
-    expect(withGap[0]!.u).toBe(0.5);
+    expect(withGap[0]!.u).toBeCloseTo(0.25, 6);
+    expect(withGap[0]!.u - withGap[0]!.visW / 2).toBeCloseTo(0, 6);
   });
 
   it('does nothing in mirror mode', () => {

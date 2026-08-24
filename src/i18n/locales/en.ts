@@ -91,7 +91,7 @@ export const en = {
   'panel.overlay.errorUnknown': 'Unknown error',
   'panel.overlay.retry': 'Retry',
   'panel.overlay.busy': 'Encoding…',
-  'panel.outOfFrame': 'The continuation is outside the frame — zoom in or switch to “Mirror”',
+  'panel.outOfFrame': 'The continuation is outside the frame — drag the picture, zoom in, or switch to “Mirror”',
 
   'panel.detail.frameSize': 'Frame size',
   'panel.detail.bpp': 'bpp',

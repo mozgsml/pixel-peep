@@ -45,6 +45,14 @@ fitᵢ = min(PW / Wᵢ, PH / Hᵢ)          // z=0: the whole image is visible
 scaleᵢ(z) = fitᵢ ^ (1 − z)             // z=1: one image pixel per device pixel
 ```
 
+**Panels holding the same frame share one fit — the smallest of them**
+(`panelFits`). Fitting each panel independently sounds harmless and is not: drag the divider to
+27/73 with a 4096×2304 photo and the narrow panel fits against its width while the wide one fits
+against its height, drawing the same picture 2.5× larger on one side. Comparison and the flip test
+are then meaningless, which is the whole product. The smallest fit rather than the leader's, so
+`z = 0` still shows the entire frame in every panel. Panels holding frames of *different* sizes keep
+their own fit — that is what the alignment control is for.
+
 The interpolation is **geometric, not linear**. Equal wheel deltas must produce equal *ratios* of
 magnification, not equal differences, or the wheel feels lumpy. If `fitᵢ > 1` — the image is smaller
 than the panel — the scale simply runs the other way; the logic is unchanged and no clamping is
@@ -90,8 +98,10 @@ When the image already fits (`vis ≥ 1`) the centre is **not** pinned to `0.5`.
 somewhere inside the image, so it can never be pushed off screen entirely.
 
 This looks like a missing simplification and is not. Pinning the centre made a small frame
-impossible to move at all, and in "continue" mode the second panel then never reached the frame — it
-showed empty background at every zoom below 1:1, which is exactly the range that mode exists for.
+impossible to move at all.
+
+This rule governs `mirror`. In `continue` the pan range belongs to the whole row instead — see
+[Panning modes](#panning-modes) below.
 
 ### Panning modes
 
@@ -108,9 +118,20 @@ setting. `gap` is the divider width expressed in fractions of the image: the div
 the frame, and without accounting for it the seam is off by exactly those pixels — visibly so once
 the divider has been dragged.
 
-Clamping applies to the leading panel and the rest are derived from it. A trailing panel may run
-into the edge, and one whose window falls entirely outside the frame says so rather than showing an
-unexplained grey rectangle.
+Clamping in this mode belongs to the **row**, not to the leading panel (`clampLeaderCentre`). The
+panels are one long viewport laid end to end, so the bound is: row and frame overlap along the whole
+of whichever is shorter — a row narrower than the frame stays inside it, a row wider than the frame
+keeps the frame inside itself. No part of the frame can fall off either end of the row.
+
+Clamping the leader alone instead stopped the drag dead while the trailing panels were still empty.
+With the whole frame visible in panel 0 the continuation began past the frame's end, and no
+reachable centre brought it back — the mode was unusable at any zoom below 1:1. The row rule also
+makes the exact case come out right: two 500 px panels on a 1000 px frame at 1:1 tile it into halves
+instead of leaving panel 0 on the middle and panel 1 hanging off the edge.
+
+A trailing panel may still run past the frame — at a zoom where one panel already holds everything
+there is nothing to continue into — and one whose window falls entirely outside says so rather than
+showing an unexplained grey rectangle.
 
 ## Rendering
 

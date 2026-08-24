@@ -88,6 +88,40 @@ export function fitScale(box: PanelBox, align: AlignMode = 'contain'): number {
 }
 
 /**
+ * Fit for every panel — the one function the rest of the code should ask.
+ *
+ * On top of {@link fitScale} it applies a single rule: **panels holding the
+ * same frame share one fit, the smallest of them.**
+ *
+ * Without it each panel fits independently, and dragging the divider then
+ * changes the two fits by different amounts. A 4096×2304 photo in a 27/73
+ * split puts the narrow panel's fit against the width and the wide panel's
+ * against the height — the same photograph drawn 2.5× larger on one side than
+ * on the other. Side-by-side comparison and the flip test both stop meaning
+ * anything at that point, which is the entire product.
+ *
+ * The smallest fit rather than the leader's, so `z = 0` still shows the whole
+ * frame in *every* panel and never crops one of them.
+ *
+ * Panels holding frames of different sizes keep their own fit. That is what
+ * the alignment control exists for, and a shared scale there would shrink the
+ * smaller frame for no reason.
+ */
+export function panelFits(boxes: readonly PanelBox[], align: AlignMode = 'contain'): number[] {
+  const fits = boxes.map((box) => fitScale(box, align));
+  const first = boxes[0];
+  if (!first || boxes.length < 2) return fits;
+
+  const sameFrame = boxes.every(
+    (box) => box.image.width === first.image.width && box.image.height === first.image.height,
+  );
+  if (!sameFrame) return fits;
+
+  const shared = Math.min(...fits);
+  return fits.map(() => shared);
+}
+
+/**
  * Geometric (not linear) interpolation between `fit` and `1:1`.
  *
  *   scale(0) = fit,  scale(1) = 1
@@ -207,17 +241,14 @@ export function layoutGeometry(
 ): PanelGeometry[] {
   if (boxes.length === 0) return [];
 
-  const leaderBox = boxes[0]!;
-  const leaderFit = fitScale(leaderBox, opts.align);
-  const leaderScale = scaleForZoom(leaderFit, view.z);
-  const leaderVis = visibleSpan(leaderBox, leaderScale);
-  const leaderCentre = clampPoint({ u: view.u, v: view.v }, leaderVis.visW, leaderVis.visH);
+  const fits = panelFits(boxes, opts.align);
+  const leaderCentre = clampLeaderCentre(boxes, view, opts);
 
   const out: PanelGeometry[] = [];
   let prev: PanelGeometry | null = null;
 
-  for (const box of boxes) {
-    const fit = fitScale(box, opts.align);
+  for (const [index, box] of boxes.entries()) {
+    const fit = fits[index]!;
     const scale = scaleForZoom(fit, view.z);
     const { visW, visH } = visibleSpan(box, scale);
 
@@ -242,6 +273,60 @@ export function layoutGeometry(
   return out;
 }
 
+/**
+ * Where the leader's centre is allowed to sit.
+ *
+ * `mirror` — the leader's window is the only window, so the ordinary rule in
+ * {@link clampCentre} applies.
+ *
+ * `continuous` — the panels are one long viewport laid end to end, and the pan
+ * range belongs to the row rather than to the first panel. Clamping the leader
+ * alone stopped the drag dead while the trailing panels were still empty: with
+ * the whole frame visible in panel 0 the continuation began past the frame's
+ * end, and no reachable centre brought it back. The row can now be moved until
+ * the frame reaches either end of it, which is what "continue" is supposed to
+ * let you follow.
+ */
+export function clampLeaderCentre(
+  boxes: readonly PanelBox[],
+  view: ViewState,
+  opts: LayoutOptions,
+): Point {
+  const leaderBox = boxes[0];
+  if (!leaderBox) return { u: view.u, v: view.v };
+
+  const fits = panelFits(boxes, opts.align);
+  const leaderVis = visibleSpan(leaderBox, scaleForZoom(fits[0]!, view.z));
+
+  if (opts.sync !== 'continuous' || boxes.length < 2) {
+    return clampPoint({ u: view.u, v: view.v }, leaderVis.visW, leaderVis.visH);
+  }
+
+  // Length of the whole row along the layout axis, in fractions of the image,
+  // splitters included.
+  let row = 0;
+  for (const [index, box] of boxes.entries()) {
+    const scale = scaleForZoom(fits[index]!, view.z);
+    const vis = visibleSpan(box, scale);
+    if (index > 0) row += gapSpan(box, scale, opts);
+    row += opts.axis === 'x' ? vis.visW : vis.visH;
+  }
+
+  const leaderSpan = opts.axis === 'x' ? leaderVis.visW : leaderVis.visH;
+  const centre = opts.axis === 'x' ? view.u : view.v;
+  // Bound the row's leading edge so that row and frame overlap along the whole
+  // of whichever is shorter: a row narrower than the frame stays inside it, a
+  // row wider than the frame keeps the frame inside itself. `1 - row` is
+  // negative in the first case and positive in the second, so one pair of
+  // bounds covers both. No part of the frame can fall off the ends of the row.
+  const start = clamp(centre - leaderSpan / 2, Math.min(0, 1 - row), Math.max(0, 1 - row));
+  const along = start + leaderSpan / 2;
+
+  return opts.axis === 'x'
+    ? { u: along, v: clampCentre(view.v, leaderVis.visH) }
+    : { u: clampCentre(view.u, leaderVis.visW), v: along };
+}
+
 /** The splitter, measured in fractions of this panel's image along the axis. */
 function gapSpan(box: PanelBox, scale: number, opts: LayoutOptions): number {
   const gap = opts.gap ?? 0;
@@ -264,6 +349,7 @@ export function leaderCentreFor(
 ): Point {
   if (index <= 0 || opts.sync !== 'continuous') return desired;
 
+  const fits = panelFits(boxes, opts.align);
   let offsetU = 0;
   let offsetV = 0;
   let prevVis: { visW: number; visH: number } | null = null;
@@ -271,7 +357,7 @@ export function leaderCentreFor(
   for (let i = 0; i <= index; i++) {
     const box = boxes[i];
     if (!box) break;
-    const scale = scaleForZoom(fitScale(box, opts.align), view.z);
+    const scale = scaleForZoom(fits[i]!, view.z);
     const vis = visibleSpan(box, scale);
     if (prevVis) {
       const gap = gapSpan(box, scale, opts);
@@ -317,17 +403,13 @@ export function zoomAtCursor(req: ZoomRequest): ViewState {
   const target = pointAtCursor(anchorCursor, box, before);
 
   const nextView: ViewState = { ...view, z: nextZ };
-  const fit = fitScale(box, opts.align);
+  const fit = panelFits(boxes, opts.align)[index] ?? fitScale(box, opts.align);
   const scale = scaleForZoom(fit, nextZ);
   const { visW, visH } = visibleSpan(box, scale);
 
   const desired = centreForAnchor(target, anchorCursor, box, visW, visH);
   const leader = leaderCentreFor(boxes, nextView, opts, index, desired);
-
-  const leaderBox = boxes[0]!;
-  const leaderScale = scaleForZoom(fitScale(leaderBox, opts.align), nextZ);
-  const leaderVis = visibleSpan(leaderBox, leaderScale);
-  const clamped = clampPoint(leader, leaderVis.visW, leaderVis.visH);
+  const clamped = clampLeaderCentre(boxes, { ...nextView, u: leader.u, v: leader.v }, opts);
 
   return { z: nextZ, u: clamped.u, v: clamped.v };
 }
@@ -357,10 +439,7 @@ export function panBy(req: PanRequest): ViewState {
   };
 
   const leader = leaderCentreFor(boxes, view, opts, index, desired);
-  const leaderBox = boxes[0]!;
-  const leaderScale = scaleForZoom(fitScale(leaderBox, opts.align), view.z);
-  const leaderVis = visibleSpan(leaderBox, leaderScale);
-  const clamped = clampPoint(leader, leaderVis.visW, leaderVis.visH);
+  const clamped = clampLeaderCentre(boxes, { ...view, u: leader.u, v: leader.v }, opts);
 
   return { z: view.z, u: clamped.u, v: clamped.v };
 }
