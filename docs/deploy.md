@@ -117,8 +117,15 @@ above is unaffected, because it compares production against a `dist/` built in t
 cannot verify "is production serving my commit" by rebuilding locally and comparing hashes. Read the
 build info out of the page instead.
 
-## Not configured yet
+## No branch protection, on purpose
 
-Branch protection on `main`. The workflows assume the pull-request flow, but direct pushes are still
-allowed, so `ci.yml` and `preview.yml` do not actually gate anything. Settings → Branches → require
-a pull request and the `check` status from `ci.yml`.
+`main` takes direct pushes. `ci.yml` and `preview.yml` therefore gate nothing by themselves — they
+run on pull requests, and nobody is obliged to open one.
+
+That is a decision, not an omission: at this size the pull-request ceremony costs more than it
+catches. What actually protects production is downstream of the push — `deploy.yml` runs typecheck,
+tests and build before it will deploy at all, then smoke-tests the deployed site and rolls back on
+failure. A bad push does not reach production; it fails the deploy.
+
+Worth revisiting the day more than one person pushes here. Settings → Branches → require a pull
+request and the `check` status from `ci.yml`.
