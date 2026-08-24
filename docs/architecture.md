@@ -129,9 +129,15 @@ reachable centre brought it back — the mode was unusable at any zoom below 1:1
 makes the exact case come out right: two 500 px panels on a 1000 px frame at 1:1 tile it into halves
 instead of leaving panel 0 on the middle and panel 1 hanging off the edge.
 
-A trailing panel may still run past the frame — at a zoom where one panel already holds everything
-there is nothing to continue into — and one whose window falls entirely outside says so rather than
-showing an unexplained grey rectangle.
+Switching into the mode also shares the frame out across the row (`spreadFrameCentre`), giving each
+panel a slice in proportion to what it can hold. Without that the switch landed on "whole frame in
+panel 0, empty background in the rest" — reachable, draggable out of, and completely uninformative
+as an opening view. A view that is already zoomed in past the row's length is left where it is:
+the panels tile the frame wherever they sit, and moving it would only throw away what was being
+looked at.
+
+A trailing panel may still run past the frame while panning, and one whose window falls entirely
+outside says so rather than showing an unexplained grey rectangle.
 
 ## Rendering
 

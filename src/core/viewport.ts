@@ -9,6 +9,7 @@ import {
   clampLeaderCentre,
   layoutGeometry,
   panelFits,
+  spreadFrameCentre,
   panBy,
   scaleForZoom,
   zoomAtCursor,
@@ -77,6 +78,14 @@ export class Viewport {
   setSync(sync: SyncMode): void {
     if (this.#sync === sync) return;
     this.#sync = sync;
+    // Entering `continuous` at a zoom where one panel already holds the whole
+    // frame would otherwise leave the rest of the row on empty background —
+    // the one arrangement of the mode that shows nothing. Share the frame out
+    // instead, so switching lands on a view that reads across the divider.
+    if (sync === 'continuous') {
+      const spread = spreadFrameCentre(this.#boxes, this.#view, this.options);
+      this.#view = { z: this.#view.z, u: spread.u, v: spread.v };
+    }
     this.#reclamp();
     this.#emit();
   }

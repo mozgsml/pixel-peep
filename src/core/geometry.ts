@@ -327,6 +327,45 @@ export function clampLeaderCentre(
     : { u: clampCentre(view.u, leaderVis.visW), v: along };
 }
 
+/**
+ * Leader centre that shares the frame out across the row.
+ *
+ * Only meaningful when the row is longer than the frame — when it is shorter
+ * the panels already tile the frame wherever they sit, and moving the view
+ * would only fight whatever the user was looking at, so the centre is returned
+ * untouched.
+ *
+ * When the row is longer, some panels have to show background whatever we do,
+ * and where the frame sits decides whether the mode is any use at all. Landing
+ * on "the whole frame in panel 0, nothing in the rest" is the one arrangement
+ * that says nothing, and it is exactly where switching into the mode used to
+ * leave you. Each panel is given a slice in proportion to what it can hold, so
+ * the frame straddles the divider and reads continuously across it.
+ */
+export function spreadFrameCentre(
+  boxes: readonly PanelBox[],
+  view: ViewState,
+  opts: LayoutOptions,
+): Point {
+  const leaderBox = boxes[0];
+  if (!leaderBox || boxes.length < 2) return { u: view.u, v: view.v };
+
+  const fits = panelFits(boxes, opts.align);
+  const spans = boxes.map((box, index) => {
+    const vis = visibleSpan(box, scaleForZoom(fits[index]!, view.z));
+    return opts.axis === 'x' ? vis.visW : vis.visH;
+  });
+
+  const total = spans.reduce((sum, span) => sum + span, 0);
+  if (total <= 1) return { u: view.u, v: view.v };
+
+  // The leader's slice of the frame, and the centre that ends its window there.
+  const share = spans[0]! / total;
+  const along = share - spans[0]! / 2;
+
+  return opts.axis === 'x' ? { u: along, v: view.v } : { u: view.u, v: along };
+}
+
 /** The splitter, measured in fractions of this panel's image along the axis. */
 function gapSpan(box: PanelBox, scale: number, opts: LayoutOptions): number {
   const gap = opts.gap ?? 0;

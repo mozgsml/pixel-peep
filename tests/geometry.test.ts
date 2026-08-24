@@ -8,6 +8,7 @@ import {
   layoutGeometry,
   leaderCentreFor,
   panelFits,
+  spreadFrameCentre,
   panBy,
   panelGeometry,
   pointAtCursor,
@@ -373,6 +374,60 @@ describe('panning in continuous mode', () => {
     const { steps } = dragToEnd(40);
     expect(steps).toBeGreaterThan(0);
     expect(steps).toBeLessThan(500);
+  });
+});
+
+describe('sharing the frame out across the row', () => {
+  const wide = { width: 4096, height: 2304 };
+  const opts: LayoutOptions = { sync: 'continuous', align: 'contain', axis: 'x', gap: 7 };
+
+  /** How much of the frame a panel shows, as a fraction of the frame's width. */
+  function seen(geom: { u: number; visW: number }): number {
+    return Math.max(0, Math.min(1, geom.u + geom.visW / 2) - Math.max(0, geom.u - geom.visW / 2));
+  }
+
+  it('gives every panel a piece when one of them could hold everything', () => {
+    // Switching into the mode used to land on "whole frame in panel 0, nothing
+    // in panel 1" — the one arrangement that shows nothing.
+    const boxes: PanelBox[] = [
+      { image: wide, panel: { width: 1256, height: 547 } },
+      { image: wide, panel: { width: 1348, height: 547 } },
+    ];
+    const view = { z: 0, u: 0.5, v: 0.5 };
+    const spread = spreadFrameCentre(boxes, view, opts);
+    const geoms = layoutGeometry(boxes, { ...view, ...spread }, opts);
+
+    for (const geom of geoms) expect(seen(geom)).toBeGreaterThan(0.2);
+    // Between them they cover the frame, give or take the splitter.
+    expect(seen(geoms[0]!) + seen(geoms[1]!)).toBeGreaterThan(0.98);
+  });
+
+  it('splits in proportion to what each panel can hold', () => {
+    const boxes: PanelBox[] = [
+      { image: wide, panel: { width: 697, height: 1003 } },
+      { image: wide, panel: { width: 1908, height: 1003 } },
+    ];
+    const view = { z: 0, u: 0.5, v: 0.5 };
+    const geoms = layoutGeometry(boxes, { ...view, ...spreadFrameCentre(boxes, view, opts) }, opts);
+    // The narrow panel gets the smaller slice, not an equal one.
+    expect(seen(geoms[0]!)).toBeLessThan(seen(geoms[1]!));
+    expect(seen(geoms[0]!)).toBeGreaterThan(0.1);
+  });
+
+  it('leaves a zoomed-in view where it was', () => {
+    // Once the row is shorter than the frame the panels already tile it, and
+    // moving the view would just throw away whatever was being looked at.
+    const boxes: PanelBox[] = [
+      { image: wide, panel: { width: 600, height: 400 } },
+      { image: wide, panel: { width: 600, height: 400 } },
+    ];
+    const view = { z: 1, u: 0.42, v: 0.31 };
+    expect(spreadFrameCentre(boxes, view, opts)).toEqual({ u: 0.42, v: 0.31 });
+  });
+
+  it('does nothing with a single panel', () => {
+    const view = { z: 0, u: 0.3, v: 0.7 };
+    expect(spreadFrameCentre([landscape], view, opts)).toEqual({ u: 0.3, v: 0.7 });
   });
 });
 

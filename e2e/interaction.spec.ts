@@ -162,3 +162,28 @@ test('a codec that never arrives blames the network, not the file', async ({ pag
   // The generic advice is wrong here: no parameter change would ever help.
   await expect(overlay).not.toContainText('Try different parameters');
 });
+
+test('switching to Continue lands on a view that shows something', async ({ page }) => {
+  // Reported after the pan range was widened: the mode could now be dragged
+  // into a useful position, but switching into it still landed on "whole frame
+  // in panel 0, empty background in panel 1" — the one arrangement of the mode
+  // that shows nothing at all.
+  await loadFixture(page);
+  await page.locator('.segment', { hasText: /^Continue$/ }).click();
+  await page.waitForTimeout(300);
+
+  const drawn = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="panel"]')].map((panel) => {
+      const canvas = panel.querySelector('canvas') as HTMLCanvasElement;
+      const pixels = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+      // Anything that is not the surround grey counts as picture.
+      let painted = 0;
+      for (let i = 0; i < pixels.length; i += 4 * 16) {
+        if (Math.abs(pixels[i]! - 0x2e) > 6 || Math.abs(pixels[i + 2]! - 0x2e) > 6) painted++;
+      }
+      return painted;
+    }),
+  );
+
+  for (const painted of drawn) expect(painted, 'a panel was left on empty background').toBeGreaterThan(0);
+});
