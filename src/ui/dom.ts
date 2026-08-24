@@ -93,3 +93,73 @@ export function iconButton(label: string, glyph: string, onClick: () => void, ti
   button.addEventListener('click', onClick);
   return button;
 }
+
+/**
+ * A hint that actually appears.
+ *
+ * The native `title` was doing this job and was not up to it: the target was
+ * the 28 px word alone, the browser waits about a second of motionless hover
+ * before showing anything, any re-render of the element cancels that wait —
+ * seven title rewrites in two seconds while a panel encodes — and on a
+ * touchscreen it never appears at all. An interface that promises a hint with a
+ * dotted underline and a help cursor has to deliver one.
+ *
+ * The text is read at show time, so switching language needs no re-wiring.
+ */
+const TOOLTIP_ID = 'tooltip';
+const TOOLTIP_DELAY_MS = 120;
+
+let tooltip: HTMLElement | null = null;
+let tooltipTimer: ReturnType<typeof setTimeout> | null = null;
+
+function tooltipNode(): HTMLElement {
+  if (!tooltip) {
+    tooltip = el('div', { class: 'tooltip', role: 'tooltip', id: TOOLTIP_ID });
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function hideTooltip(): void {
+  if (tooltipTimer !== null) {
+    clearTimeout(tooltipTimer);
+    tooltipTimer = null;
+  }
+  tooltip?.classList.remove('is-visible');
+}
+
+function showTooltip(trigger: HTMLElement, text: string): void {
+  if (!text) return;
+  const node = tooltipNode();
+  setText(node, text);
+  node.classList.add('is-visible');
+
+  // Measured after the text is in place, then kept inside the viewport.
+  const anchor = trigger.getBoundingClientRect();
+  const box = node.getBoundingClientRect();
+  const left = Math.min(Math.max(8, anchor.left + anchor.width / 2 - box.width / 2), window.innerWidth - box.width - 8);
+  const above = anchor.top - box.height - 8;
+  node.style.left = `${Math.round(left)}px`;
+  node.style.top = `${Math.round(above >= 8 ? above : anchor.bottom + 8)}px`;
+}
+
+/** Hover, keyboard focus and touch all reach it; Escape dismisses. */
+export function attachTooltip(trigger: HTMLElement, text: () => string): void {
+  trigger.tabIndex = 0;
+  trigger.setAttribute('aria-describedby', TOOLTIP_ID);
+
+  const open = () => showTooltip(trigger, text());
+  const openSoon = () => {
+    if (tooltipTimer !== null) clearTimeout(tooltipTimer);
+    tooltipTimer = setTimeout(open, TOOLTIP_DELAY_MS);
+  };
+
+  trigger.addEventListener('pointerenter', openSoon);
+  trigger.addEventListener('pointerleave', hideTooltip);
+  trigger.addEventListener('focus', open);
+  trigger.addEventListener('blur', hideTooltip);
+  trigger.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') hideTooltip();
+  });
+  window.addEventListener('scroll', hideTooltip, { passive: true, capture: true });
+}

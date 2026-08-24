@@ -304,3 +304,45 @@ test('the encoding card keeps off the middle of the frame', async ({ page }) => 
   expect(box, 'the card was not up').not.toBeNull();
   expect(box!.bottom).toBeLessThan(box!.height / 3);
 });
+
+test('the PSNR hint actually appears, by pointer and by keyboard', async ({ page }) => {
+  // The dotted underline and help cursor promised a hint that never arrived:
+  // it was a native `title`, whose target was the 28 px word alone, which waits
+  // about a second of motionless hover, is cancelled by any re-render of the
+  // element, and does not exist on a touchscreen.
+  await loadFixture(page);
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  const cell = panel.locator('.metric.has-tooltip');
+  const tip = page.locator('#tooltip');
+
+  await expect(tip).toBeHidden();
+  await cell.hover();
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText('correlates poorly');
+
+  // The number is part of the target too, not just the label.
+  await page.mouse.move(0, 0);
+  await expect(tip).toBeHidden();
+  await panel.locator('[data-metric="psnr"]').hover();
+  await expect(tip).toBeVisible();
+
+  // Reachable without a pointer at all, and dismissable.
+  await page.mouse.move(0, 0);
+  await expect(tip).toBeHidden();
+  await cell.focus();
+  await expect(tip).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(tip).toBeHidden();
+
+  // It stays on screen rather than hanging off the edge.
+  await cell.hover();
+  const box = (await tip.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+
+  // And it follows the language, being read at the moment it is shown.
+  await page.mouse.move(0, 0);
+  await page.locator('.segmented[aria-label="Language"] button', { hasText: 'RU' }).click();
+  await cell.hover();
+  await expect(tip).toContainText('плохо коррелирует');
+});

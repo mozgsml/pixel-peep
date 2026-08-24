@@ -680,10 +680,36 @@ input[type="range"]:disabled::-moz-range-thumb {
   white-space: nowrap;
 }
 
+/* The whole cell is the target, not just the 28 px word: a hint nobody can
+   reliably hover is the same as no hint. The dotted rule stays on the label,
+   which is what marks the cell as having something to say. */
+.metric.has-tooltip {
+  cursor: help;
+}
+
 .metric.has-tooltip .metric-label {
   border-bottom: 1px dotted var(--line-strong);
-  cursor: help;
   justify-self: start;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 60;
+  max-width: 320px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: rgba(24, 24, 24, 0.97);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  /* Laid out even when hidden, so it can be measured before being placed. */
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.tooltip.is-visible {
+  visibility: visible;
 }
 
 .details-toggle {

@@ -5,7 +5,7 @@ import { PanelRenderer } from '../render/panel-renderer.ts';
 import type { AppState, PanelState } from '../app/state.ts';
 import { panelSource } from '../app/state.ts';
 import { type ParamsView, createParamsView } from './controls.ts';
-import { clear, el, setText, toggleClass } from './dom.ts';
+import { attachTooltip, clear, el, setText, toggleClass } from './dom.ts';
 import * as fmt from './format.ts';
 
 export interface PanelHost {
@@ -85,6 +85,7 @@ export class PanelView {
 
     this.#psnrMetric = metric(this.#psnrLabel, this.#psnr);
     this.#psnrMetric.classList.add('has-tooltip');
+    attachTooltip(this.#psnrMetric, () => t('panel.psnrTooltip'));
 
     const metrics = el(
       'div',
@@ -158,7 +159,6 @@ export class PanelView {
     setText(this.#sizeLabel, t('panel.metric.size'));
     setText(this.#ratioLabel, t('panel.metric.ratio'));
     setText(this.#psnrLabel, t('panel.metric.psnr'));
-    this.#psnrMetric.title = t('panel.psnrTooltip');
     this.#detailsButton.title = t('panel.details');
     setText(this.#outOfFrame, t('panel.outOfFrame'));
 
