@@ -610,7 +610,13 @@ input[type="range"]:disabled::-moz-range-thumb {
   background: rgba(24, 24, 24, 0.65);
 }
 
+/* Shown whenever a panel is encoding, with or without a picture underneath, so
+   the feedback is the same whether the format or a parameter changed.
+   Pinned to the top edge rather than centred: dragging a quality slider keeps a
+   panel encoding continuously, and a card in the middle of the frame would sit
+   on exactly the detail being judged. */
 .overlay-busy {
+  align-self: start;
   grid-auto-flow: column;
   align-items: center;
   gap: 10px;

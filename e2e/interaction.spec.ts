@@ -193,23 +193,7 @@ test('a panel stays visibly busy until the full-size result lands', async ({ pag
   // seconds later. The proxy pass was publishing itself as `ready`, so the
   // spinner went out and a preview byte count — three times off on a large
   // photo — sat there looking like the answer.
-  await page.evaluate(async () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 2800;
-    canvas.height = 1800; // over PROXY_MAX_PIXELS, so a proxy pass really happens
-    const ctx = canvas.getContext('2d')!;
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, '#204080');
-    gradient.addColorStop(1, '#e0b070');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let i = 0; i < 600; i++) {
-      ctx.fillStyle = `hsl(${(i * 37) % 360} 60% ${30 + (i % 40)}%)`;
-      ctx.fillRect((i * 97) % canvas.width, (i * 61) % canvas.height, 40, 40);
-    }
-    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
-    await window.pixelPeep.app.openFiles([new File([blob], 'big.png', { type: 'image/png' })]);
-  });
+  await loadLargePhoto(page);
 
   const panel = page.locator('[data-testid="panel"]').nth(1);
   await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 120_000 });
@@ -238,4 +222,85 @@ test('a panel stays visibly busy until the full-size result lands', async ({ pag
   expect(seen.filter((s) => s.startsWith('ready|proxy')), `states seen: ${seen.join(' → ')}`).toEqual([]);
   // Whenever it is working, the indicator is up.
   expect(seen.filter((s) => s.startsWith('encoding') && s.endsWith('idle')), `states seen: ${seen.join(' → ')}`).toEqual([]);
+});
+
+/**
+ * A photo comfortably over `PROXY_MAX_PIXELS`, so the pipeline really runs a
+ * proxy pass and then a full one, and the encode takes long enough to observe.
+ */
+async function loadLargePhoto(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2800;
+    canvas.height = 1800;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#204080');
+    gradient.addColorStop(1, '#e0b070');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < 600; i++) {
+      ctx.fillStyle = `hsl(${(i * 37) % 360} 60% ${30 + (i % 40)}%)`;
+      ctx.fillRect((i * 97) % canvas.width, (i * 61) % canvas.height, 40, 40);
+    }
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+    await window.pixelPeep.app.openFiles([new File([blob], 'big.png', { type: 'image/png' })]);
+  });
+}
+
+/** Watches for the encoding card over the picture, however briefly it is up. */
+async function watchForBusyCard(page: Page): Promise<void> {
+  await page.locator('[data-testid="panel"]').nth(1).evaluate((el) => {
+    const w = window as unknown as { sawCard: boolean };
+    w.sawCard = false;
+    const note = () => {
+      const overlay = el.querySelector('.panel-overlay');
+      if (overlay?.classList.contains('is-visible') && overlay.querySelector('.overlay-busy')) w.sawCard = true;
+    };
+    note();
+    new MutationObserver(note).observe(el, { attributes: true, childList: true, subtree: true });
+  });
+}
+
+test('the picture says it is encoding whether the format or a parameter changed', async ({ page }) => {
+  // These two paths reported differently: changing the format cleared the
+  // result and so raised the card, changing a parameter kept the result and
+  // raised nothing over the picture at all.
+  await loadLargePhoto(page);
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 120_000 });
+
+  await watchForBusyCard(page);
+  await panel.locator('.format-select').selectOption('webp');
+  await waitForFullResult(page, 1);
+  expect(await page.evaluate(() => (window as unknown as { sawCard: boolean }).sawCard), 'format change').toBe(true);
+
+  await watchForBusyCard(page);
+  const quality = panel.locator('input.param-slider').first();
+  await quality.fill('35');
+  await quality.dispatchEvent('change');
+  await waitForFullResult(page, 1);
+  expect(await page.evaluate(() => (window as unknown as { sawCard: boolean }).sawCard), 'parameter change').toBe(true);
+});
+
+test('the encoding card keeps off the middle of the frame', async ({ page }) => {
+  // Dragging a quality slider keeps a panel encoding continuously; a card in
+  // the centre would sit on exactly the detail being judged.
+  await loadLargePhoto(page);
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 120_000 });
+
+  const quality = panel.locator('input.param-slider').first();
+  await quality.fill('35');
+  await quality.dispatchEvent('change');
+
+  const box = await panel.evaluate((el) => {
+    const card = el.querySelector('.overlay-busy');
+    if (!card) return null;
+    const view = el.querySelector('.panel-view')!.getBoundingClientRect();
+    const rect = card.getBoundingClientRect();
+    return { bottom: rect.bottom - view.top, height: view.height };
+  });
+  expect(box, 'the card was not up').not.toBeNull();
+  expect(box!.bottom).toBeLessThan(box!.height / 3);
 });

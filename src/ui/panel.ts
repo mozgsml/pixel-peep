@@ -270,15 +270,16 @@ export class PanelView {
       card.appendChild(retry);
       this.#overlay.appendChild(card);
       visible = true;
-    } else if (panel.status === 'encoding' && !panel.result) {
+    } else if (panel.status === 'encoding') {
       this.#overlay.appendChild(
         el('div', { class: 'overlay-card overlay-busy' }, el('span', { class: 'spinner' }), t('panel.overlay.busy')),
       );
       visible = true;
     }
 
-    // A busy indicator that replaces the picture would defeat the purpose:
-    // the previous result stays on screen while the new one is computed.
+    // The previous result stays on screen while the new one is computed — the
+    // indicator sits above it rather than replacing it, and is deliberately not
+    // centred: see the note on `.overlay-busy`.
     toggleClass(this.root, 'is-busy', panel.status === 'encoding');
     toggleClass(this.#overlay, 'is-visible', visible);
   }
