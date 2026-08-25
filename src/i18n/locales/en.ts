@@ -92,6 +92,7 @@ export const en = {
   'panel.overlay.retry': 'Retry',
   'panel.overlay.busy': 'Encoding…',
   'panel.outOfFrame': 'The continuation is outside the frame — drag the picture, zoom in, or switch to “Mirror”',
+  'panel.interpolated': 'Preview at reduced resolution — these enlarged pixels are interpolation, not the codec\u2019s own',
 
   'panel.detail.frameSize': 'Frame size',
   'panel.detail.bpp': 'bpp',

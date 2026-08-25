@@ -609,6 +609,15 @@ export class App {
       const drawBox = { image: logical, panel: box.panel };
       view.renderer.draw(pyramid, drawBox, geom, filter);
       view.setOutOfFrame(!!pyramid && drawRects(drawBox, geom) === null);
+
+      // A proxy-resolution texture only misleads once its own pixels are being
+      // magnified. The frame covers `scale * dpr` device pixels per image pixel
+      // and the texture holds `texture` of them, so each texture pixel is drawn
+      // `scale * dpr / texture` across; below 1 the browser is shrinking it and
+      // the softness is invisible. At 1:1 on a 65% proxy it is already 1.5.
+      const texture = pyramid ? pyramid.width / Math.max(1, logical.width) : 1;
+      const dpr = window.devicePixelRatio || 1;
+      view.setInterpolated(!!pyramid && texture < 0.999 && (geom.scale * dpr) / texture >= 1);
     });
 
     this.#textures.retain(keys);

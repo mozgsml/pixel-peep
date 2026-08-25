@@ -91,6 +91,7 @@ export const ru: Partial<Messages> = {
   'panel.overlay.retry': 'Повторить',
   'panel.overlay.busy': 'Кодирование…',
   'panel.outOfFrame': 'Область продолжения вне кадра — сдвиньте картинку, увеличьте масштаб или переключитесь на «Зеркало»',
+  'panel.interpolated': 'Предпросмотр в пониженном разрешении — увеличенные пиксели здесь интерполированы, это не работа кодека',
 
   'panel.detail.frameSize': 'Размер кадра',
   'panel.detail.bpp': 'bpp',

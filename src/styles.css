@@ -567,6 +567,16 @@ input[type="range"]:disabled::-moz-range-thumb {
   display: block;
 }
 
+/* Sits above the "continuation" note when both apply, and clear of the busy
+   card at the top of the frame. */
+.panel-interpolated {
+  inset: auto 16px 16px;
+}
+
+.panel-outside.is-visible ~ .panel-interpolated.is-visible {
+  bottom: 60px;
+}
+
 .panel-overlay {
   position: absolute;
   inset: 0;

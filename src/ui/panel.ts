@@ -56,6 +56,7 @@ export class PanelView {
   #detailsButton = el('button', { type: 'button', class: 'details-toggle', 'aria-expanded': 'false' }, '⋯');
   #canvas = el('canvas', { class: 'panel-canvas' });
   #outOfFrame = el('div', { class: 'panel-outside' });
+  #interpolated = el('div', { class: 'panel-outside panel-interpolated' });
 
   #lastSchemaId = '';
   #lastFormats: readonly CodecDescriptor[] = [];
@@ -79,6 +80,7 @@ export class PanelView {
       { class: 'panel-view', tabindex: '0', role: 'img' },
       this.#canvas,
       this.#outOfFrame,
+      this.#interpolated,
       this.#overlay,
     );
     this.paramsHost = el('div', { class: 'panel-params' }, this.params.root);
@@ -161,6 +163,7 @@ export class PanelView {
     setText(this.#psnrLabel, t('panel.metric.psnr'));
     this.#detailsButton.title = t('panel.details');
     setText(this.#outOfFrame, t('panel.outOfFrame'));
+    setText(this.#interpolated, t('panel.interpolated'));
 
     const source = panelSource(state, panel);
     const isReference = panel.formatId === 'original';
@@ -318,6 +321,16 @@ export class PanelView {
    */
   setOutOfFrame(outside: boolean): void {
     toggleClass(this.#outOfFrame, 'is-visible', outside);
+  }
+
+  /**
+   * A preview is encoded at proxy resolution, so magnifying it shows
+   * interpolation rather than the codec's own pixels — and next to a panel
+   * drawing real pixels at the same zoom it reads as though the codec had
+   * smeared the picture. Say what is actually on screen.
+   */
+  setInterpolated(on: boolean): void {
+    toggleClass(this.#interpolated, 'is-visible', on);
   }
 
   dispose(): void {

@@ -346,3 +346,39 @@ test('the PSNR hint actually appears, by pointer and by keyboard', async ({ page
   await cell.hover();
   await expect(tip).toContainText('плохо коррелирует');
 });
+
+test('a magnified preview says its pixels are interpolated', async ({ page }) => {
+  // Reported: at 7:1 the original showed hard pixels and a lossless WebP beside
+  // it looked smeared, with PSNR reading ∞. Both were true — the panel was
+  // showing a proxy-resolution preview, magnified and therefore interpolated —
+  // but nothing on screen said so, and it read as a codec artefact.
+  await loadLargePhoto(page);
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 120_000 });
+
+  await page.locator('.zoom-presets .button', { hasText: '1:1' }).click();
+
+  // Record what the panel showed throughout, so nothing depends on timing.
+  await panel.evaluate((el) => {
+    const seen: string[] = [];
+    (window as unknown as { seen: string[] }).seen = seen;
+    const note = () => {
+      const shown = el.querySelector('.panel-interpolated')!.classList.contains('is-visible');
+      const state = `${el.getAttribute('data-quality')}|${shown ? 'note' : 'no-note'}`;
+      if (seen.at(-1) !== state) seen.push(state);
+    };
+    note();
+    new MutationObserver(note).observe(el, { attributes: true, subtree: true, attributeFilter: ['data-quality', 'class'] });
+  });
+
+  await panel.locator('.format-select').selectOption('webp');
+  await panel.locator('input[type="checkbox"]').first().check();
+  await waitForFullResult(page, 1);
+  const seen = await page.evaluate(() => (window as unknown as { seen: string[] }).seen);
+
+  expect(seen.some((s) => s === 'proxy|note'), `states: ${seen.join(' → ')}`).toBe(true);
+  // Once the real pixels arrive the note has nothing to say.
+  expect(seen.at(-1), `states: ${seen.join(' → ')}`).toBe('full|no-note');
+  // And a panel drawing the real frame never claims to be interpolating.
+  await expect(page.locator('[data-testid="panel"]').nth(0).locator('.panel-interpolated')).toBeHidden();
+});
