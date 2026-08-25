@@ -157,6 +157,13 @@ outside says so rather than showing an unexplained grey rectangle.
 - Textures are owned by a shared store rather than by a panel, because the flip test shows panel 0's
   pixels inside every panel and rebuilding a mip pyramid on every press of the space bar would
   defeat the point of the flip test.
+- That store's pixel budget is a ceiling for what is **not** on screen. `retain()` drops the rest
+  after every frame and sets the cache's eviction floor to what it kept, so the budget can never
+  throw out a texture a panel is about to draw. Without that floor it did: two panels holding one
+  frame each come to `2 × pixels × 1.34`, which passed the 60 Mpx ceiling at about 22 Mpx, so an
+  ordinary 24 Mpx photograph rebuilt its pyramid every frame and panning went from 33 ms to 250 ms
+  — 456 ms at 45 Mpx. Evicting something that is on screen never saves anything; it is wanted again
+  on the next frame.
 
 ## The encoding pipeline
 

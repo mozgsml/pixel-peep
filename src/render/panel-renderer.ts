@@ -16,8 +16,10 @@ export const SURROUND = '#2e2e2e';
 export class TextureStore {
   #cache: LruCache<{ pixels: number; pyramid: MipPyramid }>;
 
-  // A ceiling, not a working set: `retain()` drops everything not on screen
-  // after each frame, so this only bounds a pathological case.
+  // A ceiling for whatever is *not* on screen. `retain()` drops those after
+  // every frame and sets the floor to what is left, so the budget can never
+  // evict a texture a panel is about to draw — doing that rebuilt the pyramid
+  // on every frame instead of saving anything.
   constructor(budgetPixels = 60_000_000) {
     this.#cache = new LruCache(budgetPixels, (entry) => entry.pyramid.dispose());
   }
@@ -36,6 +38,7 @@ export class TextureStore {
   retain(keys: Iterable<string>): void {
     const keep = new Set(keys);
     this.#cache.prune((key) => !keep.has(key));
+    this.#cache.floor = keep.size;
   }
 
   clear(): void {

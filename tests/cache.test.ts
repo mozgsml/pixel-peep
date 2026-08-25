@@ -80,3 +80,44 @@ describe('hashParams', () => {
     expect(a).not.toBe(cacheKey('s1', 'avif', { quality: 80 }, 'full'));
   });
 });
+
+describe('the eviction floor', () => {
+  const entry = (pixels: number) => ({ pixels });
+
+  it('evicts down to a single entry when nothing is protected', () => {
+    const cache = new LruCache<{ pixels: number }>(100);
+    cache.set('a', entry(80));
+    cache.set('b', entry(80));
+    expect(cache.keys()).toEqual(['b']);
+  });
+
+  it('keeps the set its owner says it needs, over budget or not', () => {
+    // Evicting something that is on screen saves nothing: it is wanted again
+    // on the very next frame. Two panels holding one 24 Mpx frame each came to
+    // 64 Mpx against a 60 Mpx ceiling, so one was thrown out and rebuilt every
+    // frame — panning went from 33 ms to 250 ms.
+    const cache = new LruCache<{ pixels: number }>(100);
+    cache.floor = 2;
+    cache.set('a', entry(80));
+    cache.set('b', entry(80));
+    expect(cache.keys()).toEqual(['a', 'b']);
+    expect(cache.pixels).toBeGreaterThan(cache.budget);
+  });
+
+  it('still evicts whatever is over and above that set', () => {
+    const cache = new LruCache<{ pixels: number }>(100);
+    cache.floor = 2;
+    cache.set('a', entry(50));
+    cache.set('b', entry(50));
+    cache.set('c', entry(50));
+    expect(cache.keys()).toEqual(['b', 'c']);
+  });
+
+  it('treats a floor below one as one', () => {
+    const cache = new LruCache<{ pixels: number }>(100);
+    cache.floor = 0;
+    cache.set('a', entry(80));
+    cache.set('b', entry(80));
+    expect(cache.keys()).toEqual(['b']);
+  });
+});

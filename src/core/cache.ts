@@ -14,6 +14,7 @@ export interface Sized {
 export class LruCache<V extends Sized> {
   #map = new Map<string, V>();
   #pixels = 0;
+  #floor = 1;
   readonly #budget: number;
   readonly #dispose: ((value: V) => void) | undefined;
 
@@ -32,6 +33,21 @@ export class LruCache<V extends Sized> {
 
   get budget(): number {
     return this.#budget;
+  }
+
+  /**
+   * How many entries the budget may never evict below.
+   *
+   * For a cache of things currently on screen, evicting one of them saves
+   * nothing: it is wanted again on the next frame and gets rebuilt. The texture
+   * store learned this the hard way — two panels holding one frame each came to
+   * 2 × pixels × 1.34, which passed the ceiling at about 22 Mpx, so an ordinary
+   * 24 Mpx photograph rebuilt a mip pyramid every single frame and panning fell
+   * from 33 ms to 250 ms. The owner sets this to the size of the set it really
+   * needs; the budget then bounds only what is left over.
+   */
+  set floor(entries: number) {
+    this.#floor = Math.max(1, entries);
   }
 
   has(key: string): boolean {
@@ -91,9 +107,9 @@ export class LruCache<V extends Sized> {
   }
 
   #evict(): void {
-    // Never evict the entry just written, even if it alone busts the budget:
-    // returning it is better than thrashing.
-    while (this.#pixels > this.#budget && this.#map.size > 1) {
+    // Never evict the entry just written, nor dip below the set the owner says
+    // it needs: returning them is better than thrashing.
+    while (this.#pixels > this.#budget && this.#map.size > this.#floor) {
       const oldest = this.#map.keys().next();
       if (oldest.done) break;
       this.delete(oldest.value);
