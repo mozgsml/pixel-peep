@@ -1232,6 +1232,14 @@ body.is-compact .icon-button {
   visibility: visible;
 }
 
+/* While a panel is working the frame under it belongs to the previous settings.
+   Darkening it says so at a glance, from anywhere on screen, without covering
+   the picture or moving anything. No transition: movement between image states
+   is exactly what makes differences hard to see. */
+.panel.is-busy .panel-canvas {
+  filter: brightness(0.45);
+}
+
 /* The figures are not the answer yet: either left over from the previous
    settings or measured on the proxy. Dimming says so without moving anything.
    Not dimmer than this: the metrics have to stay at AA, and 0.45 measured

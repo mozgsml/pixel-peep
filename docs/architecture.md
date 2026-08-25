@@ -168,15 +168,27 @@ ImageSource.full (or .proxy) → encode(params) → Blob   ← the size comes fr
 
 What is displayed is the **decoded result**, not the original. Otherwise there is nothing to compare.
 
-### Proxy previews
+### One pass, at the size the settings ask for
 
-- `PROXY_MAX_PIXELS = 4_000_000`, about 2560×1600.
-- While a quality slider is being dragged the proxy is encoded, debounced by 200 ms. The panel is
-  marked as encoding when the task is *scheduled*, not when the debounce expires, so a drag says
-  immediately that it is working. On release, a full-size encode is queued.
-- A proxy result is badged "preview", its size is shown with a `≈`, and "of original" is withheld —
-  comparing proxy bytes against the source file would be a lie. Saving stays disabled until the
-  full-resolution pass lands, so a preview is never saved under a full-size name.
+There used to be a proxy-resolution pass first, so that something appeared sooner. It was a bad
+bargain and is gone. Magnified past its own pixels a proxy shows interpolation rather than the
+codec's work — at 1:1 a 65% proxy is already stretched 1.5× — and next to a panel drawing real
+pixels it reads as though the codec had smeared the picture. Worse, the full pass only started once
+the proxy had finished: on a 9 Mpx photo the real answer arrived 2.8 seconds later for it.
+
+What replaced it is plain waiting, said out loud. A panel being encoded dims its frame, shows a card
+over the picture and a line in the metrics row, and dims the figures — which until the result lands
+still belong to the previous settings. `ready` now means the real thing, because there is nothing
+else it could mean.
+
+A dragged slider is still debounced by 200 ms, so a drag does not start an encode per tick. The
+panel is marked as encoding when the task is *scheduled* rather than when the debounce expires, so
+it says immediately that it is working.
+
+The one place a reduced copy survives is a frame over `LARGE_IMAGE_PIXELS` (40 Mpx), where encoding
+at full size risks an out-of-memory kill. That result is badged "preview", its size carries a `≈`,
+"of original" is withheld — comparing proxy bytes against the source file would be a lie — saving is
+disabled, and if it is magnified far enough for the interpolation to show, the panel says so.
 
 ### Cancellation
 

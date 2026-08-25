@@ -188,79 +188,44 @@ test('switching to Continue lands on a view that shows something', async ({ page
   for (const painted of drawn) expect(painted, 'a panel was left on empty background').toBeGreaterThan(0);
 });
 
-test('a panel stays visibly busy until the full-size result lands', async ({ page }) => {
-  // Reported: move the quality slider, no loader, and the size only settles
-  // seconds later. The proxy pass was publishing itself as `ready`, so the
-  // spinner went out and a preview byte count — three times off on a large
-  // photo — sat there looking like the answer.
+test('a panel is plainly working until the result lands, and never before', async ({ page }) => {
+  // Reported: move the quality slider, no loader, and the size settles seconds
+  // later. A proxy-resolution pass used to publish itself as `ready` halfway
+  // through; there is one pass now, so `ready` can only mean the real thing.
   await loadLargePhoto(page);
-
   const panel = page.locator('[data-testid="panel"]').nth(1);
   await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 120_000 });
 
-  // Record every state the panel passes through, so nothing depends on catching
-  // a moment.
+  // Record every state passed through, so nothing depends on catching a moment.
   await panel.evaluate((el) => {
     const seen: string[] = [];
     (window as unknown as { seen: string[] }).seen = seen;
     const note = () => {
       const busy = el.querySelector('.panel-busy')!.classList.contains('is-visible');
-      const state = `${el.getAttribute('data-status')}|${el.getAttribute('data-quality')}|${busy ? 'busy' : 'idle'}`;
+      const dimmed = getComputedStyle(el.querySelector('.panel-canvas')!).filter !== 'none';
+      const state = `${el.getAttribute('data-status')}|${el.getAttribute('data-quality')}|${busy ? 'busy' : 'idle'}|${dimmed ? 'dim' : 'lit'}`;
       if (seen.at(-1) !== state) seen.push(state);
     };
     note();
-    new MutationObserver(note).observe(el, { attributes: true, subtree: true, attributeFilter: ['data-status', 'data-quality', 'class'] });
+    new MutationObserver(note).observe(el, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ['data-status', 'data-quality', 'class'],
+    });
   });
 
   await panel.locator('.format-select').selectOption('webp');
   await waitForFullResult(page, 1);
   const seen = await page.evaluate(() => (window as unknown as { seen: string[] }).seen);
+  const where = `states seen: ${seen.join(' → ')}`;
 
-  // The preview must arrive while the panel still says it is working.
-  expect(seen.some((s) => s.startsWith('encoding|proxy')), `states seen: ${seen.join(' → ')}`).toBe(true);
-  // And it must never claim to be finished while showing one.
-  expect(seen.filter((s) => s.startsWith('ready|proxy')), `states seen: ${seen.join(' → ')}`).toEqual([]);
-  // Whenever it is working, the indicator is up.
-  expect(seen.filter((s) => s.startsWith('encoding') && s.endsWith('idle')), `states seen: ${seen.join(' → ')}`).toEqual([]);
+  // Nothing at proxy resolution reaches the screen on a normal-sized frame.
+  expect(seen.filter((state) => state.includes('|proxy|')), where).toEqual([]);
+  // Whenever it is working, the indicator is up and the frame is dimmed.
+  expect(seen.filter((state) => state.startsWith('encoding') && !state.endsWith('busy|dim')), where).toEqual([]);
+  // And it finishes lit, on the real thing.
+  expect(seen.at(-1), where).toBe('ready|full|idle|lit');
 });
-
-/**
- * A photo comfortably over `PROXY_MAX_PIXELS`, so the pipeline really runs a
- * proxy pass and then a full one, and the encode takes long enough to observe.
- */
-async function loadLargePhoto(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 2800;
-    canvas.height = 1800;
-    const ctx = canvas.getContext('2d')!;
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, '#204080');
-    gradient.addColorStop(1, '#e0b070');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    for (let i = 0; i < 600; i++) {
-      ctx.fillStyle = `hsl(${(i * 37) % 360} 60% ${30 + (i % 40)}%)`;
-      ctx.fillRect((i * 97) % canvas.width, (i * 61) % canvas.height, 40, 40);
-    }
-    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
-    await window.pixelPeep.app.openFiles([new File([blob], 'big.png', { type: 'image/png' })]);
-  });
-}
-
-/** Watches for the encoding card over the picture, however briefly it is up. */
-async function watchForBusyCard(page: Page): Promise<void> {
-  await page.locator('[data-testid="panel"]').nth(1).evaluate((el) => {
-    const w = window as unknown as { sawCard: boolean };
-    w.sawCard = false;
-    const note = () => {
-      const overlay = el.querySelector('.panel-overlay');
-      if (overlay?.classList.contains('is-visible') && overlay.querySelector('.overlay-busy')) w.sawCard = true;
-    };
-    note();
-    new MutationObserver(note).observe(el, { attributes: true, childList: true, subtree: true });
-  });
-}
 
 test('the picture says it is encoding whether the format or a parameter changed', async ({ page }) => {
   // These two paths reported differently: changing the format cleared the
@@ -347,38 +312,40 @@ test('the PSNR hint actually appears, by pointer and by keyboard', async ({ page
   await expect(tip).toContainText('плохо коррелирует');
 });
 
-test('a magnified preview says its pixels are interpolated', async ({ page }) => {
-  // Reported: at 7:1 the original showed hard pixels and a lossless WebP beside
-  // it looked smeared, with PSNR reading ∞. Both were true — the panel was
-  // showing a proxy-resolution preview, magnified and therefore interpolated —
-  // but nothing on screen said so, and it read as a codec artefact.
-  await loadLargePhoto(page);
-  const panel = page.locator('[data-testid="panel"]').nth(1);
-  await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 120_000 });
+/**
+ * A frame comfortably larger than the fixture, so an encode takes long enough
+ * to observe the states a panel passes through.
+ */
+async function loadLargePhoto(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 2800;
+    canvas.height = 1800;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#204080');
+    gradient.addColorStop(1, '#e0b070');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < 600; i++) {
+      ctx.fillStyle = `hsl(${(i * 37) % 360} 60% ${30 + (i % 40)}%)`;
+      ctx.fillRect((i * 97) % canvas.width, (i * 61) % canvas.height, 40, 40);
+    }
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+    await window.pixelPeep.app.openFiles([new File([blob], 'big.png', { type: 'image/png' })]);
+  });
+}
 
-  await page.locator('.zoom-presets .button', { hasText: '1:1' }).click();
-
-  // Record what the panel showed throughout, so nothing depends on timing.
-  await panel.evaluate((el) => {
-    const seen: string[] = [];
-    (window as unknown as { seen: string[] }).seen = seen;
+/** Watches for the encoding card over the picture, however briefly it is up. */
+async function watchForBusyCard(page: Page): Promise<void> {
+  await page.locator('[data-testid="panel"]').nth(1).evaluate((el) => {
+    const w = window as unknown as { sawCard: boolean };
+    w.sawCard = false;
     const note = () => {
-      const shown = el.querySelector('.panel-interpolated')!.classList.contains('is-visible');
-      const state = `${el.getAttribute('data-quality')}|${shown ? 'note' : 'no-note'}`;
-      if (seen.at(-1) !== state) seen.push(state);
+      const overlay = el.querySelector('.panel-overlay');
+      if (overlay?.classList.contains('is-visible') && overlay.querySelector('.overlay-busy')) w.sawCard = true;
     };
     note();
-    new MutationObserver(note).observe(el, { attributes: true, subtree: true, attributeFilter: ['data-quality', 'class'] });
+    new MutationObserver(note).observe(el, { attributes: true, childList: true, subtree: true });
   });
-
-  await panel.locator('.format-select').selectOption('webp');
-  await panel.locator('input[type="checkbox"]').first().check();
-  await waitForFullResult(page, 1);
-  const seen = await page.evaluate(() => (window as unknown as { seen: string[] }).seen);
-
-  expect(seen.some((s) => s === 'proxy|note'), `states: ${seen.join(' → ')}`).toBe(true);
-  // Once the real pixels arrive the note has nothing to say.
-  expect(seen.at(-1), `states: ${seen.join(' → ')}`).toBe('full|no-note');
-  // And a panel drawing the real frame never claims to be interpolating.
-  await expect(page.locator('[data-testid="panel"]').nth(0).locator('.panel-interpolated')).toBeHidden();
-});
+}

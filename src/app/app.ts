@@ -158,7 +158,7 @@ export class App {
     this.#panels = this.store.state.panels.map((_, index) => {
       const view = new PanelView(index, {
         onFormatChange: (i, formatId) => this.setFormat(i, formatId),
-        onParamPreview: (i, key, value) => this.setParam(i, key, value, 'preview'),
+        onParamPreview: (i, key, value) => this.setParam(i, key, value, 'dragging'),
         onParamCommit: (i, key, value) => this.setParam(i, key, value, 'final'),
         onActivate: (i) => {
           if (this.store.state.activePanel !== i) this.store.set({ activePanel: i });
@@ -465,7 +465,7 @@ export class App {
     this.#pipeline.schedule(index, 'final');
   }
 
-  setParam(index: number, key: string, value: ParamValue, mode: 'preview' | 'final'): void {
+  setParam(index: number, key: string, value: ParamValue, mode: 'dragging' | 'final'): void {
     const state = this.store.state;
     const panel = state.panels[index];
     if (!panel) return;

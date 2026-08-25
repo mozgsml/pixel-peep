@@ -8,8 +8,8 @@ import { WorkerPool } from '../workers/pool.ts';
 import { type DiffResponse, type EncodeResponse, type MetricsResponse, fromRaw, toRaw } from '../workers/protocol.ts';
 import { type AppStore, type EncodeResult, type ResultQuality, panelSource, updatePanel } from './state.ts';
 
-/** Debounce for slider dragging, as specified. */
-const PREVIEW_DEBOUNCE_MS = 200;
+/** Quiet period before a dragged slider starts an encode. */
+const DRAG_DEBOUNCE_MS = 200;
 
 /**
  * Cached decoded results, budgeted in pixels rather than in entries: a 24 Mpx
@@ -55,11 +55,12 @@ export class EncodePipeline {
   }
 
   /**
-   * `preview` debounces and stops at proxy resolution; `final` goes all the way
-   * to full size. Either way the previous job for that panel is aborted, so a
-   * dragged slider never accumulates a queue.
+   * Both modes encode at full size; `dragging` only waits out a short quiet
+   * period first, so a slider being moved does not start an encode per tick.
+   * Either way the previous job for that panel is aborted, so a dragged slider
+   * never accumulates a queue.
    */
-  schedule(index: number, mode: 'preview' | 'final' = 'final'): void {
+  schedule(index: number, mode: 'dragging' | 'final' = 'final'): void {
     const panel = this.#store.state.panels[index];
     if (!panel) return;
 
@@ -71,7 +72,7 @@ export class EncodePipeline {
 
     const start = () => {
       next.timer = null;
-      void this.#run(index, mode, next).catch((error: unknown) => {
+      void this.#run(index, next).catch((error: unknown) => {
         if (error instanceof AbortError) return;
         this.#fail(index, next, error);
       });
@@ -84,11 +85,11 @@ export class EncodePipeline {
       this.#store.set((s) => ({ panels: updatePanel(s, index, { status: 'encoding', error: undefined, errorKind: undefined }) }));
     }
 
-    if (mode === 'preview') next.timer = setTimeout(start, PREVIEW_DEBOUNCE_MS);
+    if (mode === 'dragging') next.timer = setTimeout(start, DRAG_DEBOUNCE_MS);
     else start();
   }
 
-  scheduleAll(mode: 'preview' | 'final' = 'final'): void {
+  scheduleAll(mode: 'dragging' | 'final' = 'final'): void {
     this.#store.state.panels.forEach((_, index) => this.schedule(index, mode));
   }
 
@@ -153,7 +154,7 @@ export class EncodePipeline {
     }
   }
 
-  async #run(index: number, mode: 'preview' | 'final', job: PanelJob): Promise<void> {
+  async #run(index: number, job: PanelJob): Promise<void> {
     const state = this.#store.state;
     const panel = state.panels[index];
     if (!panel) return;
@@ -168,51 +169,39 @@ export class EncodePipeline {
       return;
     }
 
-    // Proxy first for instant feedback, then full size. A cached full result
-    // makes the proxy pass pointless, so it is skipped.
-    let targets: ResultQuality[];
-    if (source.proxyIsFull) {
-      // Small enough that the proxy *is* the full image: one pass, no preview.
-      targets = ['full'];
-    } else if (state.proxyOnly) {
-      // Too large to encode at full size without risking an out-of-memory kill.
-      targets = ['proxy'];
-    } else if (mode === 'preview') {
-      targets = ['proxy'];
-    } else {
-      targets = this.#cached(source, panel.formatId, panel.params, 'full') ? ['full'] : ['proxy', 'full'];
-    }
+    // One pass, at the size the settings ask for. A proxy-resolution preview
+    // used to go first so that something appeared sooner, and it was a bad
+    // bargain: magnified past its own pixels it shows interpolation rather than
+    // the codec's work, and the full pass only starts once it is done — on a
+    // 9 Mpx photo the real answer arrived 2.8 seconds later for it. Waiting
+    // once, with the panel plainly marked as working, is clearer and quicker.
+    //
+    // The exception is a frame too large to encode whole without risking an
+    // out-of-memory kill. There the reduced copy is the only thing on offer,
+    // and the interface says so.
+    const targets: ResultQuality[] = state.proxyOnly && !source.proxyIsFull ? ['proxy'] : ['full'];
 
-    for (const [step, quality] of targets.entries()) {
-      if (!this.#isCurrent(index, job)) throw new AbortError();
+    const quality = targets[0]!;
+    const cached = this.#cached(source, panel.formatId, panel.params, quality);
+    const result =
+      cached ?? (await this.#encodeWithRetry(source, panel.formatId, panel.params, quality, job.controller.signal));
+    if (!this.#isCurrent(index, job)) throw new AbortError();
 
-      const cached = this.#cached(source, panel.formatId, panel.params, quality);
-      const result =
-        cached ?? (await this.#encodeWithRetry(source, panel.formatId, panel.params, quality, job.controller.signal));
-      if (!this.#isCurrent(index, job)) throw new AbortError();
+    // Measured against the reference at the same resolution.
+    const reference = quality === 'full' ? source.full : source.proxy;
+    const metrics =
+      result.width === reference.width && result.height === reference.height
+        ? await this.#metrics(reference, result.decoded, job.controller.signal)
+        : null;
+    if (!this.#isCurrent(index, job)) throw new AbortError();
 
-      // Metrics are measured against the reference at the same resolution;
-      // only the full-size pass is reported as authoritative.
-      const reference = quality === 'full' ? source.full : source.proxy;
-      const metrics =
-        result.width === reference.width && result.height === reference.height
-          ? await this.#metrics(reference, result.decoded, job.controller.signal)
-          : null;
-      if (!this.#isCurrent(index, job)) throw new AbortError();
+    const diff =
+      metrics && this.#store.state.viewMode === 'diff'
+        ? await this.#diff(reference, result.decoded, job.controller.signal)
+        : null;
+    if (!this.#isCurrent(index, job)) throw new AbortError();
 
-      const diff =
-        metrics && this.#store.state.viewMode === 'diff'
-          ? await this.#diff(reference, result.decoded, job.controller.signal)
-          : null;
-      if (!this.#isCurrent(index, job)) throw new AbortError();
-
-      // A proxy pass with a full-size pass still to come is a stopping point,
-      // not an answer: publish the picture and the provisional number, but stay
-      // marked as working. Reporting `ready` here turned the spinner off and
-      // left a preview byte count sitting there looking final — on a large
-      // photo for several seconds, and three times off.
-      this.#publish(index, job, result, metrics, diff, step < targets.length - 1);
-    }
+    this.#publish(index, job, result, metrics, diff);
 
     this.#jobs.delete(panel.id);
   }
@@ -223,8 +212,6 @@ export class EncodePipeline {
     result: EncodeResult,
     metrics: Metrics | null,
     diff: ImageData | null,
-    /** Another pass for this panel is still to come. */
-    more = false,
   ): void {
     if (!this.#isCurrent(index, job)) return;
     this.#store.set((state) => ({
@@ -232,7 +219,7 @@ export class EncodePipeline {
         result,
         metrics,
         diff,
-        status: more ? 'encoding' : 'ready',
+        status: 'ready',
         error: undefined,
         errorKind: undefined,
         revision: panel.revision + 1,
