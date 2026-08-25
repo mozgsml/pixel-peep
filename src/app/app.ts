@@ -1,7 +1,7 @@
 import { REFERENCE_FORMAT, findCodec, listCodecs } from '../codecs/registry.ts';
 import { type ParamValue, defaultParams, normaliseParams } from '../codecs/types.ts';
 import { type AlignMode, type Axis, type PanelBox, type SyncMode, drawRects } from '../core/geometry.ts';
-import { type ImageSource, PROXY_ONLY_PIXELS, SUPPORTED_INPUT_LABELS } from '../core/image-source.ts';
+import { type ImageSource, LARGE_IMAGE_PIXELS, SUPPORTED_INPUT_LABELS } from '../core/image-source.ts';
 import { Viewport } from '../core/viewport.ts';
 import { type Locale, setLocale, t } from '../i18n/index.ts';
 import { UnsupportedFileError, loadImageFile } from '../io/decode-file.ts';
@@ -15,7 +15,7 @@ import { Toolbar } from '../ui/toolbar.ts';
 import { attachViewportInput } from '../ui/viewport-input.ts';
 import { DEMOS, demoToFile } from './demos.ts';
 import { EncodePipeline } from './pipeline.ts';
-import { type AppStore, createStore, notice, panelSource, updatePanel } from './state.ts';
+import { type AppStore, type Notice, createStore, notice, panelSource, updatePanel } from './state.ts';
 
 /** Above this the tool works on the proxy only, to stay inside mobile memory. */
 
@@ -86,8 +86,9 @@ export class App {
       },
     });
 
-    this.#notices = new NoticeBar((id) =>
-      this.store.set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })),
+    this.#notices = new NoticeBar(
+      (id) => this.store.set((s) => ({ notices: s.notices.filter((n) => n.id !== id) })),
+      (actionId, noticeId) => this.#runNoticeAction(actionId, noticeId),
     );
 
     this.#empty = new EmptyState(
@@ -365,7 +366,7 @@ export class App {
    */
   #adoptSource(source: ImageSource, panelIndex?: number): void {
     const state = this.store.state;
-    const proxyOnly = source.width * source.height > PROXY_ONLY_PIXELS;
+    const proxyOnly = source.width * source.height > LARGE_IMAGE_PIXELS;
     const reset = {
       result: null,
       metrics: null,
@@ -389,11 +390,16 @@ export class App {
     for (const id of dropped) this.#pipeline.releaseSource(id);
 
     if (proxyOnly) {
-      this.#notify('warn', 'notice.proxyOnly', {
-        megapixels: ((source.width * source.height) / 1e6).toFixed(0),
-        width: source.proxy.width,
-        height: source.proxy.height,
-      });
+      this.#notify(
+        'warn',
+        'notice.proxyOnly',
+        {
+          megapixels: ((source.width * source.height) / 1e6).toFixed(0),
+          width: source.proxy.width,
+          height: source.proxy.height,
+        },
+        { id: 'useOriginal', label: 'notice.useOriginal' },
+      );
     }
 
     this.viewport.reset();
@@ -479,11 +485,30 @@ export class App {
     this.#pipeline.schedule(index, mode);
   }
 
-  #notify(kind: 'info' | 'warn' | 'error', key: string, vars?: Readonly<Record<string, string | number>>): void {
+  #notify(
+    kind: 'info' | 'warn' | 'error',
+    key: string,
+    vars?: Readonly<Record<string, string | number>>,
+    action?: Notice['action'],
+  ): void {
     this.store.set((s) => {
       if (s.notices.some((n) => n.key === key)) return {};
-      return { notices: [...s.notices, notice(kind, key, vars)] };
+      return { notices: [...s.notices, notice(kind, key, vars, action)] };
     });
+  }
+
+  /**
+   * The guard against running the tab out of memory is a default, not a
+   * verdict: past the threshold the reduced copy is what gets encoded, and the
+   * message offers the other choice rather than deciding for the user.
+   */
+  #runNoticeAction(actionId: string, noticeId: number): void {
+    if (actionId !== 'useOriginal') return;
+    this.store.set((s) => ({
+      proxyOnly: false,
+      notices: s.notices.filter((n) => n.id !== noticeId),
+    }));
+    this.#pipeline.scheduleAll('final');
   }
 
   /** For messages that are already text — codec failures and the like. */

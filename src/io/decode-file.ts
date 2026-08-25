@@ -2,7 +2,6 @@ import { t } from '../i18n/index.ts';
 import { orientationTransform, readOrientation, swapsAxes } from '../core/exif.ts';
 import {
   type ImageSource,
-  LARGE_IMAGE_PIXELS,
   PROXY_MAX_PIXELS,
   detectFileType,
   nextSourceId,
@@ -126,12 +125,6 @@ export async function loadImageFile(file: File | Blob, name: string): Promise<Lo
   }
 
   const full = applyOrientation(raw, readOrientation(buffer));
-  const pixels = full.width * full.height;
-
-  if (pixels > LARGE_IMAGE_PIXELS) {
-    warnings.push({ key: 'notice.largeImage', vars: { megapixels: (pixels / 1e6).toFixed(0) } });
-  }
-
   const scale = proxyScale(full.width, full.height, PROXY_MAX_PIXELS);
   const proxy =
     scale >= 1

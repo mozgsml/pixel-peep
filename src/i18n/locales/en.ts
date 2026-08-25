@@ -117,10 +117,9 @@ export const en = {
   'notice.coi':
     'COOP/COEP headers are not set: the page is not isolated, so wasm runs without threads or SIMD. AVIF and JPEG XL will encode many times slower.',
   'notice.proxyOnly':
-    'A {megapixels} Mpx frame — working on the {width}×{height} proxy so we do not run out of memory.',
+    'A {megapixels} Mpx frame. Encoding it whole can take minutes and may run the tab out of memory, so this is a {width}×{height} copy of it.',
+  'notice.useOriginal': 'Use the original anyway',
   'notice.unsupported': '{message}. Supported: {list}.',
-  'notice.largeImage':
-    'A {megapixels} Mpx image — encoding at full size can take minutes.',
 
   'layout.splitter': 'Panel divider',
   'layout.splitterHint': 'Drag to resize · double click to reset',

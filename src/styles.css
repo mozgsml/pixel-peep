@@ -1042,6 +1042,15 @@ body.is-dragover .stage-wrap::after {
   border-left: 2px solid var(--error);
 }
 
+/* The choice the message is about, sitting next to it rather than tucked into
+   a menu. `auto` margin pushes it and the close button to the right. */
+.notice-action {
+  flex: 0 0 auto;
+  margin-left: auto;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
 .notice-close {
   appearance: none;
   border: 0;

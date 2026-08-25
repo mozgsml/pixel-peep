@@ -116,10 +116,9 @@ export const ru: Partial<Messages> = {
   'notice.coi':
     'Заголовки COOP/COEP не настроены: страница не изолирована, wasm работает без потоков и SIMD. AVIF и JPEG XL будут кодироваться в разы медленнее.',
   'notice.proxyOnly':
-    'Снимок {megapixels} Мп — работаем на прокси {width}×{height}, чтобы не упереться в память.',
+    'Кадр {megapixels} Мп. Кодировать его целиком может занять минуты и не поместиться в память вкладки, поэтому это копия {width}×{height}.',
+  'notice.useOriginal': 'Всё равно использовать оригинал',
   'notice.unsupported': '{message}. Поддерживаются: {list}.',
-  'notice.largeImage':
-    'Изображение {megapixels} Мп — кодирование в полном размере может занять минуты.',
 
   'layout.splitter': 'Граница панелей',
   'layout.splitterHint': 'Тяните, чтобы изменить размер · двойной клик — сбросить',

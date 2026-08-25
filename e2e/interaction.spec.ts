@@ -354,19 +354,7 @@ test('a reduced frame is marked where the numbers are', async ({ page }) => {
   // Over the proxy-only threshold the panel encodes a reduced copy, and every
   // figure in the metrics row then describes that copy rather than the frame
   // that was opened. A badge up in the header was the only thing saying so.
-  await page.evaluate(async () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 9000;
-    canvas.height = 7000; // 63 Mpx, over PROXY_ONLY_PIXELS
-    const ctx = canvas.getContext('2d')!;
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, '#204080');
-    gradient.addColorStop(1, '#e0b070');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
-    await window.pixelPeep.app.openFiles([new File([blob], 'huge.png', { type: 'image/png' })]);
-  });
+  await loadHugePhoto(page);
 
   const panel = page.locator('[data-testid="panel"]').nth(1);
   await expect(panel).toHaveAttribute('data-status', 'ready', { timeout: 300_000 });
@@ -389,4 +377,49 @@ test('a reduced frame is marked where the numbers are', async ({ page }) => {
     const fits = await panel.locator('.panel-metrics-row').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
     expect(fits, `metrics row overflowed at ${width}px`).toBe(true);
   }
+});
+
+/** Over `LARGE_IMAGE_PIXELS`, so the reduced-copy guard trips. */
+async function loadHugePhoto(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 9000;
+    canvas.height = 7000; // 63 Mpx
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#204080');
+    gradient.addColorStop(1, '#e0b070');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+    await window.pixelPeep.app.openFiles([new File([blob], 'huge.png', { type: 'image/png' })]);
+  });
+}
+
+test('past the threshold the guard is a default, not a verdict', async ({ page }) => {
+  // A frame too big to encode whole gets a reduced copy so the tab survives —
+  // but that is the app guessing on the user's behalf, and it says so with the
+  // other choice attached rather than quietly deciding.
+  await loadHugePhoto(page);
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  await expect(panel).toHaveAttribute('data-status', 'ready', { timeout: 300_000 });
+
+  // One message, not two saying overlapping things.
+  const notices = page.locator('.notice');
+  await expect(notices).toHaveCount(1);
+  await expect(notices.first()).toContainText('63 Mpx');
+  await expect(notices.first()).toContainText('copy of it');
+
+  await expect(panel.locator('[data-metric="reduced"]')).toBeVisible();
+  await expect(panel.locator('[data-metric="ratio"]')).toHaveText('—');
+
+  await page.locator('.notice-action').click();
+  await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 600_000 });
+
+  // The frame that was opened, encoded whole: nothing left to qualify.
+  await expect(panel.locator('[data-metric="reduced"]')).toBeHidden();
+  await expect(panel.locator('[data-metric="size"]')).not.toHaveText(/^≈/);
+  await expect(panel.locator('[data-metric="ratio"]')).toHaveText(/%/);
+  // And the message has done its job.
+  await expect(notices).toHaveCount(0);
 });

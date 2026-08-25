@@ -185,10 +185,20 @@ A dragged slider is still debounced by 200 ms, so a drag does not start an encod
 panel is marked as encoding when the task is *scheduled* rather than when the debounce expires, so
 it says immediately that it is working.
 
-The one place a reduced copy survives is a frame over `PROXY_ONLY_PIXELS` (60 Mpx), where encoding
-at full size risks an out-of-memory kill. That result is badged "preview", its size carries a `≈`,
-"of original" is withheld — comparing proxy bytes against the source file would be a lie — saving is
-disabled, and if it is magnified far enough for the interpolation to show, the panel says so.
+The one place a reduced copy survives is a frame over `LARGE_IMAGE_PIXELS` (60 Mpx), where encoding
+it whole risks taking the tab down: 60 Mpx is 240 MB as `ImageData`, the result decoded back is
+another 240 MB, and the encoder holds its own buffers on top.
+
+That is a default rather than a verdict. The message says what was done and offers the other choice
+— *use the original anyway* — which turns the guard off and re-encodes whole. Meanwhile the result
+is badged "preview", the metrics row carries a `Reduced to 2268 × 1764` cell so that every figure
+beside it is read against the right frame, its size carries a `≈`, "of original" is withheld —
+comparing reduced bytes against the source file would be a lie — saving is disabled, and if it is
+magnified far enough for the interpolation to show, the panel says so.
+
+One threshold, declared once and used in one place. It used to be written out twice, here and in
+`app.ts`, with the warning shown on load speaking for both — so moving either one on its own turned
+that message into a lie.
 
 ### Cancellation
 

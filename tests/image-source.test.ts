@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   LARGE_IMAGE_PIXELS,
   PROXY_MAX_PIXELS,
-  PROXY_ONLY_PIXELS,
   detectFileType,
   nextSourceId,
   proxyScale,
@@ -75,21 +74,20 @@ describe('nextSourceId', () => {
   });
 });
 
-describe('the size thresholds', () => {
-  it('warns about a long wait well before it stops encoding whole', () => {
-    // Two different things: one predicts a wait, the other avoids running out
-    // of memory. They used to share a number *and* a message that claimed
-    // proxy mode was on — so moving either one made that message a lie.
-    expect(LARGE_IMAGE_PIXELS).toBe(40_000_000);
-    expect(PROXY_ONLY_PIXELS).toBe(60_000_000);
-    expect(LARGE_IMAGE_PIXELS).toBeLessThan(PROXY_ONLY_PIXELS);
+describe('the size threshold', () => {
+  it('is one number, used in one place', () => {
+    // It was two: this file and `app.ts`, both spelling out the same value,
+    // with the warning shown on load speaking for both. Moving either one on
+    // its own turned that message into a lie. Whatever needs the threshold
+    // imports this.
+    expect(LARGE_IMAGE_PIXELS).toBe(60_000_000);
   });
 
-  it('leaves a frame at the proxy-only threshold with a proxy worth having', () => {
+  it('leaves a frame at the threshold with a copy worth having', () => {
     // 60 Mpx as ImageData is 240 MB, and the result decoded back is 240 MB
-    // more, which is what the guard exists to avoid. The proxy has to be far
+    // more, which is what the guard exists to avoid. The copy has to be far
     // smaller than that.
-    const side = Math.round(Math.sqrt(PROXY_ONLY_PIXELS));
+    const side = Math.round(Math.sqrt(LARGE_IMAGE_PIXELS));
     const scale = proxyScale(side, side);
     expect(scale).toBeLessThan(1);
     expect(Math.round(side * scale) ** 2).toBeLessThanOrEqual(PROXY_MAX_PIXELS * 1.01);

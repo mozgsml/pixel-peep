@@ -45,6 +45,11 @@ export interface Notice {
   readonly kind: 'info' | 'warn' | 'error';
   readonly key: string;
   readonly vars?: Readonly<Record<string, string | number>>;
+  /**
+   * A choice offered alongside the message. `id` is what the app acts on,
+   * `label` is a message key. A notice that only informs has none.
+   */
+  readonly action?: { readonly id: string; readonly label: string };
 }
 
 export interface AppState {
@@ -128,9 +133,10 @@ export function notice(
   kind: Notice['kind'],
   key: string,
   vars?: Readonly<Record<string, string | number>>,
+  action?: Notice['action'],
 ): Notice {
   noticeSeq += 1;
-  return { id: noticeSeq, kind, key, vars };
+  return { id: noticeSeq, kind, key, vars, action };
 }
 
 export function panelSource(state: AppState, panel: PanelState): ImageSource | undefined {
