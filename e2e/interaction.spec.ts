@@ -423,3 +423,42 @@ test('past the threshold the guard is a default, not a verdict', async ({ page }
   // And the message has done its job.
   await expect(notices).toHaveCount(0);
 });
+
+test('a codec that runs out of room says so, instead of a trap word', async ({ page }) => {
+  // Reported with a clean console and a clean network tab: "The codec failed /
+  // unreachable / Try different parameters or another format." The word comes
+  // from a wasm module dying, the advice was wrong — neither quality nor effort
+  // changes anything — and libjxl's browser build simply cannot take a frame
+  // this size.
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 6000;
+    canvas.height = 4000; // 24 Mpx: an ordinary camera photograph
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#204080');
+    gradient.addColorStop(1, '#e0b070');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+    await window.pixelPeep.app.openFiles([new File([blob], 'camera.png', { type: 'image/png' })]);
+  });
+
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  await panel.locator('.format-select').selectOption('jxl');
+
+  const card = panel.locator('.overlay-error');
+  await expect(card).toBeVisible({ timeout: 600_000 });
+  await expect(card).toContainText('JPEG XL');
+  await expect(card).toContainText('ran out of memory');
+  // The trap word means nothing to a reader, and the old advice was wrong.
+  await expect(card).not.toContainText('unreachable');
+  await expect(card).not.toContainText('Try different parameters');
+  // Retrying would only spend the wait again.
+  await expect(card.locator('.button')).toHaveCount(0);
+
+  // And the claim it makes about other formats is true.
+  await panel.locator('.format-select').selectOption('avif');
+  await waitForFullResult(page, 1);
+  await expect(panel.locator('[data-metric="size"]')).toHaveText(/\d/);
+});

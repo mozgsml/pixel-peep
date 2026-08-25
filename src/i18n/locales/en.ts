@@ -90,6 +90,11 @@ export const en = {
   'panel.overlay.errorHint': 'Try different parameters or another format.',
   'panel.overlay.loadErrorHint': 'The codec is downloaded the first time you use it. This looks like a network problem rather than a bad file — retrying usually works.',
   'panel.overlay.errorUnknown': 'Unknown error',
+  'panel.overlay.capacityTitle': 'Too large for this codec',
+  'panel.overlay.capacityBody':
+    '{format} ran out of memory on a frame this size. Its browser build is capped at 2 GB, and libjxl passes that somewhere above 20 Mpx.',
+  'panel.overlay.capacityHint':
+    'Nothing in the settings will change this — quality and effort make no difference. The other formats handle this frame.',
   'panel.overlay.retry': 'Retry',
   'panel.overlay.busy': 'Encoding…',
   'panel.outOfFrame': 'The continuation is outside the frame — drag the picture, zoom in, or switch to “Mirror”',

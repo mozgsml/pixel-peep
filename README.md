@@ -44,6 +44,11 @@ handled correctly.
 Encoding: **JPEG** (mozjpeg), **WebP** (libwebp), **AVIF** (libavif), **JPEG XL** (libjxl),
 **PNG** (oxipng) — with the original alongside them for reference.
 
+One limit worth knowing before you hit it: JPEG XL runs out of memory above roughly 20 megapixels,
+so a photograph straight off a 24 Mpx camera is too big for it here. That is libjxl's browser build
+against the 2 GB every WebAssembly module is capped at, not something the settings can move. The
+other four formats take the same frame without complaint.
+
 Opening: JPEG, PNG, WebP, GIF, BMP, AVIF, **HEIC/HEIF** and **JPEG XL**.
 
 Any panel can save its encoded result, so once you have found a setting you like you can keep the

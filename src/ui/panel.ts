@@ -192,7 +192,7 @@ export class PanelView {
     );
 
     this.#updateBadge(state, panel);
-    this.#updateOverlay(state, panel);
+    this.#updateOverlay(state, panel, descriptor?.label ?? panel.formatId.toUpperCase());
     this.#updateDownload(panel, isReference);
 
     // The point of a busy indicator here is a slider being dragged: the picture
@@ -257,7 +257,7 @@ export class PanelView {
     toggleClass(this.#badge, 'is-visible', text !== '');
   }
 
-  #updateOverlay(state: AppState, panel: PanelState): void {
+  #updateOverlay(state: AppState, panel: PanelState, format: string): void {
     clear(this.#overlay);
     let visible = false;
 
@@ -265,24 +265,36 @@ export class PanelView {
       this.#overlay.appendChild(el('div', { class: 'overlay-card overlay-empty' }, t('panel.overlay.drop')));
       visible = true;
     } else if (panel.status === 'error') {
+      const capacity = panel.errorKind === 'capacity';
+      const load = panel.errorKind === 'load';
+      const title = capacity
+        ? 'panel.overlay.capacityTitle'
+        : load
+          ? 'panel.overlay.loadErrorTitle'
+          : 'panel.overlay.errorTitle';
+      const hint = capacity
+        ? 'panel.overlay.capacityHint'
+        : load
+          ? 'panel.overlay.loadErrorHint'
+          : 'panel.overlay.errorHint';
+      // A wasm trap word tells the reader nothing; what happened does.
+      const body = capacity
+        ? t('panel.overlay.capacityBody', { format })
+        : (panel.error ?? t('panel.overlay.errorUnknown'));
+
       const card = el(
         'div',
         { class: 'overlay-card overlay-error' },
-        el(
-          'strong',
-          {},
-          t(panel.errorKind === 'load' ? 'panel.overlay.loadErrorTitle' : 'panel.overlay.errorTitle'),
-        ),
-        el('p', {}, panel.error ?? t('panel.overlay.errorUnknown')),
-        el(
-          'p',
-          { class: 'overlay-hint' },
-          t(panel.errorKind === 'load' ? 'panel.overlay.loadErrorHint' : 'panel.overlay.errorHint'),
-        ),
+        el('strong', {}, t(title)),
+        el('p', {}, body),
+        el('p', { class: 'overlay-hint' }, t(hint)),
       );
-      const retry = el('button', { type: 'button', class: 'button' }, t('panel.overlay.retry'));
-      retry.addEventListener('click', () => this.#host.onRetry(this.#index));
-      card.appendChild(retry);
+      // Retrying a codec that ran out of room only spends the wait again.
+      if (!capacity) {
+        const retry = el('button', { type: 'button', class: 'button' }, t('panel.overlay.retry'));
+        retry.addEventListener('click', () => this.#host.onRetry(this.#index));
+        card.appendChild(retry);
+      }
       this.#overlay.appendChild(card);
       visible = true;
     } else if (panel.status === 'encoding') {

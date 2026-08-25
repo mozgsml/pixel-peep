@@ -8,6 +8,15 @@ import { WorkerPool } from '../workers/pool.ts';
 import { type DiffResponse, type EncodeResponse, type MetricsResponse, fromRaw, toRaw } from '../workers/protocol.ts';
 import { type AppStore, type EncodeResult, type ResultQuality, panelSource, updatePanel } from './state.ts';
 
+/**
+ * What a wasm module says when it has run out of room. libjxl's browser build
+ * exhausts the 2 GB every one of these modules is capped at somewhere above
+ * 20 Mpx, and comes back with `unreachable`, `Aborted()` or a corrupted table
+ * index depending on where it happened to die. All of them mean the same thing
+ * and none of them mean the picture or the settings are at fault.
+ */
+const WASM_EXHAUSTED = /unreachable|Aborted\(|out of bounds|out of memory|enlarge memory|maximum memory/i;
+
 /** Quiet period before a dragged slider starts an encode. */
 const DRAG_DEBOUNCE_MS = 200;
 
@@ -125,7 +134,11 @@ export class EncodePipeline {
   #fail(index: number, job: PanelJob, error: unknown): void {
     if (!this.#isCurrent(index, job)) return;
     const message = error instanceof Error ? error.message : String(error);
-    const errorKind = error instanceof CodecLoadError ? 'load' : 'codec';
+    const errorKind = error instanceof CodecLoadError
+      ? 'load'
+      : WASM_EXHAUSTED.test(message)
+        ? 'capacity'
+        : 'codec';
     this.#store.set((state) => ({
       panels: updatePanel(state, index, { status: 'error', error: message, errorKind }),
     }));

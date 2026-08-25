@@ -71,6 +71,14 @@ Two traps worth knowing:
   transparent pixels, which silently corrupts the metrics of anything with an alpha channel.
 - **libaom's `speed` runs backwards** from every other effort knob here — 0 is slowest and best.
   The AVIF adapter inverts it so the control reads the same way as the others.
+- **JPEG XL gives out above roughly 20 Mpx.** Every one of these wasm modules is capped at 2 GB of
+  address space, and libjxl passes that somewhere between 20 and 24 Mpx — so an ordinary camera
+  photograph is already too big. It dies inside the module, so the console and the network stay
+  clean and the only thing that comes back is a trap word: `unreachable`, `Aborted()`, or a
+  corrupted table index, depending on where it happened to fall over. Neither quality nor effort
+  changes it. `WASM_EXHAUSTED` in `pipeline.ts` recognises those words and the panel says what
+  actually happened instead of repeating them; a new codec that can run out of room needs nothing
+  added, as long as its wasm aborts the same way.
 
 ## Determinism
 
