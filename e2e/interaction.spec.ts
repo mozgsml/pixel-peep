@@ -349,3 +349,44 @@ async function watchForBusyCard(page: Page): Promise<void> {
     new MutationObserver(note).observe(el, { attributes: true, childList: true, subtree: true });
   });
 }
+
+test('a reduced frame is marked where the numbers are', async ({ page }) => {
+  // Over the proxy-only threshold the panel encodes a reduced copy, and every
+  // figure in the metrics row then describes that copy rather than the frame
+  // that was opened. A badge up in the header was the only thing saying so.
+  await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 9000;
+    canvas.height = 7000; // 63 Mpx, over PROXY_ONLY_PIXELS
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, '#204080');
+    gradient.addColorStop(1, '#e0b070');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+    await window.pixelPeep.app.openFiles([new File([blob], 'huge.png', { type: 'image/png' })]);
+  });
+
+  const panel = page.locator('[data-testid="panel"]').nth(1);
+  await expect(panel).toHaveAttribute('data-status', 'ready', { timeout: 300_000 });
+
+  const reduced = panel.locator('[data-metric="reduced"]');
+  await expect(reduced).toBeVisible();
+  await expect(reduced).toHaveText(/\d+\s*×\s*\d+/);
+  // The size it sits beside is approximate and "of original" is withheld,
+  // because comparing reduced bytes against the source file would be a lie.
+  await expect(panel.locator('[data-metric="size"]')).toHaveText(/^≈/);
+  await expect(panel.locator('[data-metric="ratio"]')).toHaveText('—');
+
+  // A panel showing the frame it was given says nothing of the sort.
+  await expect(page.locator('[data-testid="panel"]').nth(0).locator('[data-metric="reduced"]')).toBeHidden();
+
+  // And the row still fits where space is tightest.
+  for (const width of [1500, 900, 700, 420]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.waitForTimeout(200);
+    const fits = await panel.locator('.panel-metrics-row').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+    expect(fits, `metrics row overflowed at ${width}px`).toBe(true);
+  }
+});

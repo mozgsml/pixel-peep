@@ -47,7 +47,10 @@ export class PanelView {
   #size = el('span', { class: 'metric-value', 'data-metric': 'size' });
   #ratio = el('span', { class: 'metric-value', 'data-metric': 'ratio' });
   #psnr = el('span', { class: 'metric-value', 'data-metric': 'psnr' });
+  #reduced = el('span', { class: 'metric-value', 'data-metric': 'reduced' });
   #sizeLabel = el('span', { class: 'metric-label' });
+  #reducedLabel = el('span', { class: 'metric-label' });
+  #reducedMetric!: HTMLElement;
   #ratioLabel = el('span', { class: 'metric-label' });
   #psnrLabel = el('span', { class: 'metric-label' });
   #psnrMetric: HTMLElement;
@@ -89,10 +92,13 @@ export class PanelView {
     this.#psnrMetric.classList.add('has-tooltip');
     attachTooltip(this.#psnrMetric, () => t('panel.psnrTooltip'));
 
+    this.#reducedMetric = metric(this.#reducedLabel, this.#reduced);
+
     const metrics = el(
       'div',
       { class: 'panel-metrics-row' },
       metric(this.#sizeLabel, this.#size),
+      this.#reducedMetric,
       metric(this.#ratioLabel, this.#ratio),
       this.#psnrMetric,
       el('div', { class: 'panel-actions' }, this.#busy, this.#download, this.#detailsButton),
@@ -159,6 +165,7 @@ export class PanelView {
     setText(this.#load, t('panel.load'));
     this.#load.title = t('panel.loadTitle');
     setText(this.#sizeLabel, t('panel.metric.size'));
+    setText(this.#reducedLabel, t('panel.metric.reduced'));
     setText(this.#ratioLabel, t('panel.metric.ratio'));
     setText(this.#psnrLabel, t('panel.metric.psnr'));
     this.#detailsButton.title = t('panel.details');
@@ -213,6 +220,11 @@ export class PanelView {
     // size of the final file, so it is marked and the ratio is withheld rather
     // than quietly comparing incomparable numbers.
     setText(this.#size, result ? `${preview ? '≈' : ''}${fmt.bytes(result.size)}` : '…');
+    // Every figure in this row describes the frame that was actually encoded.
+    // When that is a reduced copy, the row has to say so where the numbers are,
+    // not only with a badge up in the header.
+    toggleClass(this.#reducedMetric, 'is-hidden', !preview);
+    setText(this.#reduced, preview && result ? fmt.dimensions(result.width, result.height) : '');
     setText(
       this.#ratio,
       result && originalBytes > 0 && !preview ? fmt.percent((result.size / originalBytes) * 100) : result ? '—' : '…',

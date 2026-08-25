@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { PROXY_MAX_PIXELS, detectFileType, nextSourceId, proxyScale } from '../src/core/image-source.ts';
+import {
+  LARGE_IMAGE_PIXELS,
+  PROXY_MAX_PIXELS,
+  PROXY_ONLY_PIXELS,
+  detectFileType,
+  nextSourceId,
+  proxyScale,
+} from '../src/core/image-source.ts';
 
 function buffer(bytes: number[], length = bytes.length): ArrayBuffer {
   const out = new Uint8Array(Math.max(length, bytes.length));
@@ -65,5 +72,26 @@ describe('nextSourceId', () => {
   it('never repeats', () => {
     const ids = new Set([nextSourceId(), nextSourceId(), nextSourceId()]);
     expect(ids.size).toBe(3);
+  });
+});
+
+describe('the size thresholds', () => {
+  it('warns about a long wait well before it stops encoding whole', () => {
+    // Two different things: one predicts a wait, the other avoids running out
+    // of memory. They used to share a number *and* a message that claimed
+    // proxy mode was on — so moving either one made that message a lie.
+    expect(LARGE_IMAGE_PIXELS).toBe(40_000_000);
+    expect(PROXY_ONLY_PIXELS).toBe(60_000_000);
+    expect(LARGE_IMAGE_PIXELS).toBeLessThan(PROXY_ONLY_PIXELS);
+  });
+
+  it('leaves a frame at the proxy-only threshold with a proxy worth having', () => {
+    // 60 Mpx as ImageData is 240 MB, and the result decoded back is 240 MB
+    // more, which is what the guard exists to avoid. The proxy has to be far
+    // smaller than that.
+    const side = Math.round(Math.sqrt(PROXY_ONLY_PIXELS));
+    const scale = proxyScale(side, side);
+    expect(scale).toBeLessThan(1);
+    expect(Math.round(side * scale) ** 2).toBeLessThanOrEqual(PROXY_MAX_PIXELS * 1.01);
   });
 });

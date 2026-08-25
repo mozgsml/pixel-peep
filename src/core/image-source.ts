@@ -23,8 +23,24 @@ export interface ImageSource {
 /** Roughly 2560x1600 — enough for a full-screen preview on a retina laptop. */
 export const PROXY_MAX_PIXELS = 4_000_000;
 
-/** Above this, decoding at full size risks an out-of-memory kill on mobile. */
+/**
+ * Above this, encoding at full size is worth warning about — it can take
+ * minutes — but it still happens. Only the wait is unusual, not the risk.
+ */
 export const LARGE_IMAGE_PIXELS = 40_000_000;
+
+/**
+ * Above this the frame is encoded at proxy resolution instead of whole,
+ * because encoding it whole risks an out-of-memory kill: 60 Mpx is 240 MB as
+ * `ImageData`, and the result decoded back is another 240 MB on top of what
+ * the encoder holds internally.
+ *
+ * Two constants, two different meanings — the one above only predicts a wait.
+ * What must never happen again is a *message* claiming one while the code does
+ * the other: `notice.largeImage` used to say "proxy mode is on" from its own
+ * threshold, so the two could not be moved apart without it becoming a lie.
+ */
+export const PROXY_ONLY_PIXELS = 60_000_000;
 
 let counter = 0;
 export function nextSourceId(): string {

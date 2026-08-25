@@ -185,7 +185,7 @@ A dragged slider is still debounced by 200 ms, so a drag does not start an encod
 panel is marked as encoding when the task is *scheduled* rather than when the debounce expires, so
 it says immediately that it is working.
 
-The one place a reduced copy survives is a frame over `LARGE_IMAGE_PIXELS` (40 Mpx), where encoding
+The one place a reduced copy survives is a frame over `PROXY_ONLY_PIXELS` (60 Mpx), where encoding
 at full size risks an out-of-memory kill. That result is badged "preview", its size carries a `≈`,
 "of original" is withheld — comparing proxy bytes against the source file would be a lie — saving is
 disabled, and if it is magnified far enough for the interpolation to show, the panel says so.

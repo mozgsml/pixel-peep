@@ -1,7 +1,7 @@
 import { REFERENCE_FORMAT, findCodec, listCodecs } from '../codecs/registry.ts';
 import { type ParamValue, defaultParams, normaliseParams } from '../codecs/types.ts';
 import { type AlignMode, type Axis, type PanelBox, type SyncMode, drawRects } from '../core/geometry.ts';
-import { type ImageSource, SUPPORTED_INPUT_LABELS } from '../core/image-source.ts';
+import { type ImageSource, PROXY_ONLY_PIXELS, SUPPORTED_INPUT_LABELS } from '../core/image-source.ts';
 import { Viewport } from '../core/viewport.ts';
 import { type Locale, setLocale, t } from '../i18n/index.ts';
 import { UnsupportedFileError, loadImageFile } from '../io/decode-file.ts';
@@ -18,7 +18,6 @@ import { EncodePipeline } from './pipeline.ts';
 import { type AppStore, createStore, notice, panelSource, updatePanel } from './state.ts';
 
 /** Above this the tool works on the proxy only, to stay inside mobile memory. */
-const PROXY_ONLY_PIXELS = 40_000_000;
 
 export class App {
   readonly root: HTMLElement;

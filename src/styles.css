@@ -693,6 +693,11 @@ input[type="range"]:disabled::-moz-range-thumb {
 /* The whole cell is the target, not just the 28 px word: a hint nobody can
    reliably hover is the same as no hint. The dotted rule stays on the label,
    which is what marks the cell as having something to say. */
+/* Only present when the frame encoded was a reduced copy. */
+.metric.is-hidden {
+  display: none;
+}
+
 .metric.has-tooltip {
   cursor: help;
 }

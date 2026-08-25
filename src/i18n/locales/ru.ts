@@ -71,6 +71,7 @@ export const ru: Partial<Messages> = {
 
   'panel.metric.size': 'Размер',
   'panel.metric.ratio': 'От оригинала',
+  'panel.metric.reduced': 'Уменьшено до',
   'panel.metric.psnr': 'PSNR',
   'panel.psnrTooltip':
     'PSNR плохо коррелирует с восприятием: слегка сдвинутый по яркости кадр получит низкую оценку, а замыленный — высокую. Решение принимается глазами, метрика лишь подсказка.',
@@ -118,7 +119,7 @@ export const ru: Partial<Messages> = {
     'Снимок {megapixels} Мп — работаем на прокси {width}×{height}, чтобы не упереться в память.',
   'notice.unsupported': '{message}. Поддерживаются: {list}.',
   'notice.largeImage':
-    'Изображение {megapixels} Мп — кодирование в полном размере может занять минуты и не поместиться в память на мобильных. Включён режим работы на прокси.',
+    'Изображение {megapixels} Мп — кодирование в полном размере может занять минуты.',
 
   'layout.splitter': 'Граница панелей',
   'layout.splitterHint': 'Тяните, чтобы изменить размер · двойной клик — сбросить',

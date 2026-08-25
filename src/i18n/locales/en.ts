@@ -72,6 +72,7 @@ export const en = {
 
   'panel.metric.size': 'Size',
   'panel.metric.ratio': 'Of original',
+  'panel.metric.reduced': 'Reduced to',
   'panel.metric.psnr': 'PSNR',
   'panel.psnrTooltip':
     'PSNR correlates poorly with perception: a frame shifted slightly in brightness scores low, a blurred one scores high. Judge with your eyes; the metric is only a hint.',
@@ -119,7 +120,7 @@ export const en = {
     'A {megapixels} Mpx frame — working on the {width}×{height} proxy so we do not run out of memory.',
   'notice.unsupported': '{message}. Supported: {list}.',
   'notice.largeImage':
-    'A {megapixels} Mpx image — encoding at full size can take minutes and may not fit in memory on mobile. Proxy mode is on.',
+    'A {megapixels} Mpx image — encoding at full size can take minutes.',
 
   'layout.splitter': 'Panel divider',
   'layout.splitterHint': 'Drag to resize · double click to reset',
