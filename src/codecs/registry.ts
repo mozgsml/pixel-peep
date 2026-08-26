@@ -34,5 +34,4 @@ export function listCodecs(includeDev: boolean): readonly CodecDescriptor[] {
   return codecs.filter((c) => includeDev || !c.devOnly);
 }
 
-export const DEFAULT_FORMAT = 'jpeg';
 export const REFERENCE_FORMAT = 'original';

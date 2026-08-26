@@ -1,4 +1,4 @@
-import { DEFAULT_FORMAT, REFERENCE_FORMAT, findCodec } from '../codecs/registry.ts';
+import { REFERENCE_FORMAT, findCodec } from '../codecs/registry.ts';
 import { type ParamValue, defaultParams } from '../codecs/types.ts';
 import type { AlignMode, Axis, SyncMode } from '../core/geometry.ts';
 import type { ImageSource } from '../core/image-source.ts';
@@ -104,7 +104,11 @@ export function makePanel(sourceId: string, formatId: string): PanelState {
 }
 
 export function initialState(devMode: boolean): AppState {
-  const panels = [makePanel('', REFERENCE_FORMAT), makePanel('', DEFAULT_FORMAT)];
+  // Both panels open on the original. Starting the second one on a format
+  // means every load pays for an encode nobody asked for before anything can
+  // be looked at — and on a large frame that is the slowest thing the tool
+  // does. Picking a format is one click, and it is the user's click.
+  const panels = [makePanel('', REFERENCE_FORMAT), makePanel('', REFERENCE_FORMAT)];
   return {
     locale: getLocale(),
     sources: [],

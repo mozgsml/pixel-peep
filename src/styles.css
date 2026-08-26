@@ -986,7 +986,11 @@ body.is-interacting .panel-metrics {
   position: absolute;
   inset: 0;
   display: none;
+  /* `place-items` centres each item in its own cell; the cells themselves were
+     left packed against the start, so the spinner and its label sat at the left
+     edge. `place-content` is what centres the row inside the veil. */
   place-items: center;
+  place-content: center;
   gap: 10px;
   grid-auto-flow: column;
   background: var(--surround);

@@ -14,7 +14,13 @@ const MAX_GROWTH_MB = 150;
 
 declare global {
   interface Window {
-    pixelPeep: { app: { openFiles(files: File[]): Promise<void> } };
+    /** The debug handle from `main.ts`, as far as the tests reach into it. */
+    pixelPeep: {
+      app: {
+        openFiles(files: File[]): Promise<void>;
+        store: { state: { panels: ReadonlyArray<{ formatId: string }> } };
+      };
+    };
   }
 }
 

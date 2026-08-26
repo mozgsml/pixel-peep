@@ -253,7 +253,8 @@ test('the encoding card keeps off the middle of the frame', async ({ page }) => 
   // the centre would sit on exactly the detail being judged.
   await loadLargePhoto(page);
   const panel = page.locator('[data-testid="panel"]').nth(1);
-  await expect(panel).toHaveAttribute('data-quality', 'full', { timeout: 120_000 });
+  await panel.locator('.format-select').selectOption('webp');
+  await waitForFullResult(page, 1);
 
   const quality = panel.locator('input.param-slider').first();
   await quality.fill('35');
@@ -357,7 +358,8 @@ test('a reduced frame is marked where the numbers are', async ({ page }) => {
   await loadHugePhoto(page);
 
   const panel = page.locator('[data-testid="panel"]').nth(1);
-  await expect(panel).toHaveAttribute('data-status', 'ready', { timeout: 300_000 });
+  await panel.locator('.format-select').selectOption('jpeg');
+  await expect(panel).toHaveAttribute('data-quality', 'proxy', { timeout: 300_000 });
 
   const reduced = panel.locator('[data-metric="reduced"]');
   await expect(reduced).toBeVisible();
@@ -402,7 +404,8 @@ test('past the threshold the guard is a default, not a verdict', async ({ page }
   // other choice attached rather than quietly deciding.
   await loadHugePhoto(page);
   const panel = page.locator('[data-testid="panel"]').nth(1);
-  await expect(panel).toHaveAttribute('data-status', 'ready', { timeout: 300_000 });
+  await panel.locator('.format-select').selectOption('jpeg');
+  await expect(panel).toHaveAttribute('data-quality', 'proxy', { timeout: 300_000 });
 
   // One message, not two saying overlapping things.
   const notices = page.locator('.notice');
@@ -461,4 +464,49 @@ test('a codec that runs out of room says so, instead of a trap word', async ({ p
   await panel.locator('.format-select').selectOption('avif');
   await waitForFullResult(page, 1);
   await expect(panel.locator('[data-metric="size"]')).toHaveText(/\d/);
+});
+
+test('a freshly opened photo is not encoded into anything nobody asked for', async ({ page }) => {
+  // The second panel used to open on JPEG, so every load paid for an encode
+  // before the picture could be looked at — slowest of all on a large frame,
+  // and for a format the user had not chosen.
+  await loadFixture(page);
+
+  for (const index of [0, 1]) {
+    await expect(page.locator('[data-testid="panel"]').nth(index).locator('.format-select')).toHaveValue('original');
+  }
+  const encoding = await page.evaluate(() =>
+    window.pixelPeep.app.store.state.panels.filter((panel) => panel.formatId !== 'original').length,
+  );
+  expect(encoding, 'a panel started encoding on its own').toBe(0);
+
+  // And choosing a format is still one click away.
+  await page.locator('[data-testid="panel"]').nth(1).locator('.format-select').selectOption('webp');
+  await waitForFullResult(page, 1);
+});
+
+test('the message shown while a photo decodes holds together in the middle', async ({ page }) => {
+  // `place-items` centres each item inside its own grid cell, and the two cells
+  // stretched to half the width each — so the spinner sat in the middle of the
+  // left half and its label in the middle of the right, 632 px apart on a
+  // 1400 px veil. The midpoint between them was still the centre of the screen,
+  // which is why measuring that caught nothing.
+  const veil = await page.evaluate(() => {
+    const node = document.querySelector('.loading-veil') as HTMLElement;
+    node.classList.add('is-visible');
+    (node.querySelector('.loading-text') as HTMLElement).textContent = 'Decoding photo.jpg…';
+    const box = node.getBoundingClientRect();
+    const spinner = node.querySelector('.spinner')!.getBoundingClientRect();
+    const text = node.querySelector('.loading-text')!.getBoundingClientRect();
+    return {
+      gap: text.left - spinner.right,
+      offsetX: (spinner.left + text.right) / 2 - (box.left + box.width / 2),
+      offsetY: spinner.top + spinner.height / 2 - (box.top + box.height / 2),
+    };
+  });
+
+  // Side by side, separated by the declared gap and nothing more.
+  expect(veil.gap, 'the spinner and its label were flung apart').toBeLessThan(24);
+  expect(Math.abs(veil.offsetX), 'not centred across').toBeLessThan(2);
+  expect(Math.abs(veil.offsetY), 'not centred down the page').toBeLessThan(2);
 });
